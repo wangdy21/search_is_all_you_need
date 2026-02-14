@@ -7,7 +7,7 @@
 本项目是一个全栈 Web 应用，提供多源内容检索和 AI 智能分析功能：
 
 **核心功能：**
-- **多源聚合搜索**：同时从 arXiv、DuckDuckGo、Google Scholar、知乎等多个数据源检索内容
+- **多源聚合搜索**：同时从 arXiv、Bing、Semantic Scholar、知乎等多个数据源检索内容
 - **智能内容分类**：自动识别搜索结果类型（学术论文、博客、问答、论坛、网页）
 - **AI 内容分析**：使用大语言模型生成摘要、提取关键点、翻译内容
 - **学术论文解析**：深度分析论文的研究方法、创新点、实验结果
@@ -33,9 +33,8 @@
 | zhipuai | 2.0+ | 智谱 AI SDK |
 | openai | 1.x | DeepSeek API（兼容接口） |
 | arxiv | 2.0+ | arXiv 论文检索 |
-| duckduckgo-search | 4.0+ | DuckDuckGo 搜索 |
-| scholarly | 1.7+ | Google Scholar 检索 |
-| BeautifulSoup4 | 4.12+ | HTML 解析 |
+| requests | 2.31+ | HTTP 请求（Bing / Semantic Scholar） |
+| BeautifulSoup4 | 4.12+ | HTML 解析（Bing 搜索结果解析） |
 
 ### 前端
 | 技术 | 版本 | 用途 |
@@ -90,7 +89,7 @@ DOWNLOAD_DIR=data/downloads
 
 # ========== 网络代理 (可选) ==========
 
-# 用于访问 DuckDuckGo 等国外服务
+# 用于访问外部服务（当前搜索引擎国内可直接访问，一般无需配置）
 # HTTP_PROXY=http://127.0.0.1:7890
 # HTTPS_PROXY=http://127.0.0.1:7890
 ```
@@ -189,10 +188,10 @@ python backend/app.py
 
 在顶部搜索框输入关键词，勾选数据源后按回车搜索：
 
-- **DuckDuckGo**: 通用网页搜索
-- **arXiv**: 学术预印本论文
-- **Google Scholar**: 学术文献（可能被限流）
-- **知乎**: 中文问答内容
+- **DuckDuckGo**: 通用网页搜索（底层使用 Bing 搜索引擎）
+- **arXiv**: 学术预印本论文（直接调用 arXiv API）
+- **Google Scholar**: 学术文献（底层使用 Semantic Scholar API）
+- **知乎**: 中文问答内容（通过 Bing 站内搜索）
 
 搜索结果会自动分类并显示来源标签。
 
@@ -244,7 +243,7 @@ Content-Type: application/json
 Response: {
     "results": [...],
     "total": 15,
-    "sources_status": {"arxiv": "success", "duckduckgo": "timeout"}
+    "sources_status": {"arxiv": "success", "duckduckgo": "success"}
 }
 ```
 
@@ -327,14 +326,14 @@ DELETE /api/history             # 清空历史
 
 ### HTTP 代理配置
 
-如果无法访问 DuckDuckGo，在 `.env` 中配置代理：
+如果需要通过代理访问外部服务，在 `.env` 中配置：
 
 ```bash
 HTTP_PROXY=http://127.0.0.1:7890
 HTTPS_PROXY=http://127.0.0.1:7890
 ```
 
-支持 HTTP/HTTPS/SOCKS5 代理。
+支持 HTTP/HTTPS/SOCKS5 代理。当前搜索引擎（Bing、Semantic Scholar）在国内网络下可直接访问，一般无需配置代理。
 
 ## 注意事项
 
@@ -346,12 +345,12 @@ HTTPS_PROXY=http://127.0.0.1:7890
 
 ### 数据源限制
 
-| 数据源 | 限制说明 |
-|--------|----------|
-| arXiv | 主要为英文论文，中文关键词可能无结果 |
-| Google Scholar | 易被 IP 封禁，建议配置代理 |
-| DuckDuckGo | 国内网络可能无法直接访问 |
-| 知乎 | 通过 DuckDuckGo site: 搜索实现 |
+| 数据源 | 实际后端 | 限制说明 |
+|--------|----------|----------|
+| DuckDuckGo | Bing (cn.bing.com) | 结果偏向中文内容 |
+| arXiv | arXiv API | 主要为英文论文，中文关键词可能无结果 |
+| Google Scholar | Semantic Scholar API | 免费 API，有速率限制（自动重试） |
+| 知乎 | Bing 站内搜索 | 通过 `site:zhihu.com` 限定结果范围 |
 
 ### 性能建议
 
@@ -362,8 +361,8 @@ HTTPS_PROXY=http://127.0.0.1:7890
 ### 常见问题
 
 **Q: 搜索返回空结果？**
-- 检查网络连接和代理配置
 - arXiv 仅支持英文搜索
+- Semantic Scholar API 有速率限制，短时间内多次搜索可能触发 429 错误（系统会自动重试）
 - 查看后端日志了解具体错误
 
 **Q: AI 分析功能不可用？**
