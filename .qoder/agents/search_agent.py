@@ -1,11 +1,14 @@
 import sys
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+from urllib.parse import quote_plus
 
 # Ensure project root is in path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import arxiv
+import requests
+from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 
 from backend.services.rate_limiter import RateLimiter
@@ -108,25 +111,45 @@ class SearchAgent:
         }
 
     def _search_duckduckgo(self, query, filters):
-        """Search using DuckDuckGo."""
+        """Search using Bing as backend (DuckDuckGo inaccessible in some regions)."""
         self.rate_limiter.acquire("duckduckgo", timeout=10)
         results = []
 
         try:
-            with DDGS(timeout=30, proxy=self.proxy) as ddgs:
-                raw = ddgs.text(query, max_results=self.max_results)
-                for item in raw:
-                    results.append({
-                        "title": item.get("title", ""),
-                        "url": item.get("href", ""),
-                        "snippet": item.get("body", ""),
-                        "source": "duckduckgo",
-                        "authors": "",
-                        "published": "",
-                        "extra": {},
-                    })
+            search_url = f"https://cn.bing.com/search?q={quote_plus(query)}&count={self.max_results}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }
+
+            resp = requests.get(search_url, headers=headers, timeout=15)
+            resp.raise_for_status()
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select("li.b_algo"):
+                h2 = item.select_one("h2 a")
+                if not h2:
+                    continue
+
+                title = h2.get_text(strip=True)
+                url = h2.get("href", "")
+                snippet_elem = item.select_one("p")
+                snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
+
+                results.append({
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet[:500] if snippet else "",
+                    "source": "duckduckgo",
+                    "authors": "",
+                    "published": "",
+                    "extra": {},
+                })
+
+            logger.info(f"Web search via Bing returned {len(results)} results")
         except Exception as e:
-            logger.error(f"DuckDuckGo search error: {e}")
+            logger.error(f"Web search error: {e}")
             raise
 
         return results
@@ -166,60 +189,114 @@ class SearchAgent:
         return results
 
     def _search_scholar(self, query, filters):
-        """Search Google Scholar (optional, may be blocked)."""
+        """Search academic papers via Semantic Scholar API."""
         self.rate_limiter.acquire("scholar", timeout=15)
         results = []
 
         try:
-            from scholarly import scholarly as scholarly_lib
-
-            search_query = scholarly_lib.search_pubs(query)
-            count = 0
-            for pub in search_query:
-                if count >= min(self.max_results, 10):
-                    break
-                bib = pub.get("bib", {})
+            # Use Semantic Scholar API (free, no auth required for basic search)
+            api_url = "https://api.semanticscholar.org/graph/v1/paper/search"
+            params = {
+                "query": query,
+                "limit": min(self.max_results, 10),
+                "fields": "title,url,abstract,authors,year,citationCount,venue,externalIds",
+            }
+            headers = {
+                "Accept": "application/json",
+                "User-Agent": "SearchIsAllYouNeed/1.0",
+            }
+            
+            # Retry with backoff for rate limits
+            import time
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                resp = requests.get(api_url, params=params, headers=headers, timeout=15)
+                if resp.status_code == 429:
+                    if attempt < max_retries:
+                        wait_time = 2 ** attempt  # 1, 2 seconds
+                        logger.info(f"Semantic Scholar rate limited, retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise Exception("Rate limit exceeded after retries")
+                resp.raise_for_status()
+                break
+            
+            data = resp.json()
+            
+            for paper in data.get("data", []):
+                authors = paper.get("authors", [])
+                author_names = ", ".join(a.get("name", "") for a in authors[:5])
+                
+                # Get best URL (prefer DOI or arXiv)
+                external_ids = paper.get("externalIds", {}) or {}
+                url = paper.get("url", "")
+                if external_ids.get("DOI"):
+                    url = f"https://doi.org/{external_ids['DOI']}"
+                elif external_ids.get("ArXiv"):
+                    url = f"https://arxiv.org/abs/{external_ids['ArXiv']}"
+                
                 results.append({
-                    "title": bib.get("title", ""),
-                    "url": pub.get("pub_url", "") or pub.get("eprint_url", ""),
-                    "snippet": bib.get("abstract", "")[:500],
+                    "title": paper.get("title", ""),
+                    "url": url,
+                    "snippet": (paper.get("abstract", "") or "")[:500],
                     "source": "scholar",
-                    "authors": bib.get("author", ""),
-                    "published": bib.get("pub_year", ""),
+                    "authors": author_names,
+                    "published": str(paper.get("year", "")),
                     "extra": {
-                        "venue": bib.get("venue", ""),
-                        "citation_count": pub.get("num_citations", 0),
+                        "venue": paper.get("venue", ""),
+                        "citation_count": paper.get("citationCount", 0),
                     },
                 })
-                count += 1
+            
+            logger.info(f"Semantic Scholar returned {len(results)} results")
         except Exception as e:
-            logger.warning(f"Google Scholar search failed (may be blocked): {e}")
+            logger.warning(f"Semantic Scholar search failed: {e}")
             raise
 
         return results
 
     def _search_zhihu(self, query, filters):
-        """Search Zhihu content via DuckDuckGo site: search."""
+        """Search Zhihu content via Bing site: search."""
         self.rate_limiter.acquire("zhihu", timeout=15)
         results = []
 
         try:
-            zhihu_query = f"site:zhihu.com {query}"
-            with DDGS(timeout=30, proxy=self.proxy) as ddgs:
-                raw = ddgs.text(zhihu_query, max_results=min(self.max_results, 10))
-                for item in raw:
-                    url = item.get("href", "")
-                    if "zhihu.com" not in url:
-                        continue
-                    results.append({
-                        "title": item.get("title", ""),
-                        "url": url,
-                        "snippet": item.get("body", ""),
-                        "source": "zhihu",
-                        "authors": "",
-                        "published": "",
-                        "extra": {},
-                    })
+            # Use Bing China for better accessibility
+            search_url = f"https://cn.bing.com/search?q=site%3Azhihu.com+{quote_plus(query)}&count=10"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }
+            
+            resp = requests.get(search_url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select("li.b_algo"):
+                h2 = item.select_one("h2 a")
+                if not h2:
+                    continue
+                url = h2.get("href", "")
+                if "zhihu.com" not in url:
+                    continue
+                
+                title = h2.get_text(strip=True)
+                snippet_elem = item.select_one("p")
+                snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
+                
+                results.append({
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet[:500] if snippet else "",
+                    "source": "zhihu",
+                    "authors": "",
+                    "published": "",
+                    "extra": {},
+                })
+                
+            logger.info(f"Zhihu search via Bing returned {len(results)} results")
         except Exception as e:
             logger.error(f"Zhihu search error: {e}")
             raise
