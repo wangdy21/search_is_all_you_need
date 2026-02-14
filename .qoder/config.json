@@ -1,0 +1,30 @@
+{
+    "rate_limits": {
+        "arxiv": {"capacity": 5, "refill_rate": 0.33},
+        "zhihu": {"capacity": 3, "refill_rate": 0.2},
+        "scholar": {"capacity": 10, "refill_rate": 1.0},
+        "duckduckgo": {"capacity": 20, "refill_rate": 2.0}
+    },
+    "search_defaults": {
+        "max_results_per_source": 15,
+        "timeout_seconds": 60,
+        "cache_expire_hours": 24,
+        "default_sources": ["duckduckgo", "arxiv"]
+    },
+    "download_settings": {
+        "save_directory": "data/downloads",
+        "max_concurrent_downloads": 3,
+        "arxiv_mirrors": [
+            "https://arxiv.org/pdf/",
+            "https://cn.arxiv.org/pdf/"
+        ]
+    },
+    "analysis_settings": {
+        "provider": "deepseek",
+        "zhipu_model": "glm-4-flash",
+        "deepseek_model": "deepseek-chat",
+        "max_content_length": 4000,
+        "temperature": 0.7,
+        "cache_expire_days": 7
+    }
+}
