@@ -25,6 +25,7 @@ export default function App() {
     search,
     updateSources,
     updateCategory,
+    updateTimeRange,
   } = useSearch()
 
   const {
@@ -111,6 +112,7 @@ export default function App() {
               <FilterPanel
                 filters={filters}
                 onCategoryChange={updateCategory}
+                onTimeRangeChange={updateTimeRange}
                 resultCounts={resultCounts}
               />
             </div>

@@ -14,6 +14,7 @@ export default function useSearch() {
     sources: DEFAULT_SOURCES,
     category: 'all',
     language: 'all',
+    time_range: null,
   })
 
   const search = useCallback(async (searchQuery) => {
@@ -28,7 +29,9 @@ export default function useSearch() {
       const data = await api.post('/search', {
         query: q,
         sources: filters.sources,
-        filters: {},
+        filters: {
+          time_range: filters.time_range || null,
+        },
       })
       let items = data.results || []
 
@@ -57,6 +60,10 @@ export default function useSearch() {
     setFilters((prev) => ({ ...prev, category }))
   }, [])
 
+  const updateTimeRange = useCallback((timeRange) => {
+    setFilters((prev) => ({ ...prev, time_range: timeRange }))
+  }, [])
+
   return {
     results,
     total,
@@ -69,5 +76,6 @@ export default function useSearch() {
     setFilters,
     updateSources,
     updateCategory,
+    updateTimeRange,
   }
 }

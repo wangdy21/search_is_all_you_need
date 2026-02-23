@@ -226,6 +226,27 @@ python backend/app.py
 
 - 全部 / 学术 / 博客 / 问答 / 论坛 / 网页
 
+### 6. 时间范围筛选
+
+在筛选面板中选择时间范围，限定搜索结果的时间区间：
+
+- **不限**（默认）：返回所有时间的结果
+- **近一周**：仅返回最近 7 天内的内容
+- **近一月**：仅返回最近 30 天内的内容
+- **近一年**：仅返回最近 365 天内的内容
+- **近三年**：仅返回最近 3 年内的内容
+
+选择时间范围后，点击搜索按钮即可生效。
+
+**各数据源支持情况：**
+
+| 数据源 | 时间过滤支持 | 说明 |
+|--------|------------|------|
+| arXiv | 原生支持 | 通过 `submittedDate` 查询语法精确过滤 |
+| Google Scholar | 原生支持 | 通过 Semantic Scholar API 的 `year` 参数过滤 |
+| DuckDuckGo | 不支持 | Bing 搜索结果缺少可靠的时间元数据，忽略时间参数 |
+| 知乎 | 不支持 | 基于 Bing 站内搜索，忽略时间参数 |
+
 ## API 接口说明
 
 ### 搜索接口
@@ -237,9 +258,15 @@ Content-Type: application/json
 {
     "query": "搜索关键词",
     "sources": ["duckduckgo", "arxiv", "scholar", "zhihu"],
-    "filters": {}
+    "filters": {
+        "time_range": "month"
+    }
 }
+```
 
+`filters.time_range` 可选值：`"week"` | `"month"` | `"year"` | `"3years"` | `null`（不限）。
+
+```
 Response: {
     "results": [...],
     "total": 15,

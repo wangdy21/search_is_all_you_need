@@ -1,6 +1,6 @@
 import React from 'react'
-import { Card, Select, Radio, Space, Typography } from 'antd'
-import { FilterOutlined } from '@ant-design/icons'
+import { Card, Radio, Space, Typography } from 'antd'
+import { FilterOutlined, ClockCircleOutlined } from '@ant-design/icons'
 
 const { Text } = Typography
 
@@ -13,7 +13,15 @@ const CATEGORIES = [
   { label: '网页', value: 'webpage' },
 ]
 
-export default function FilterPanel({ filters, onCategoryChange, resultCounts }) {
+const TIME_RANGES = [
+  { label: '不限', value: null },
+  { label: '近一周', value: 'week' },
+  { label: '近一月', value: 'month' },
+  { label: '近一年', value: 'year' },
+  { label: '近三年', value: '3years' },
+]
+
+export default function FilterPanel({ filters, onCategoryChange, onTimeRangeChange, resultCounts }) {
   const counts = resultCounts || {}
 
   return (
@@ -42,6 +50,26 @@ export default function FilterPanel({ filters, onCategoryChange, resultCounts })
                   </Text>
                 )}
               </Radio>
+            ))}
+          </Radio.Group>
+        </div>
+
+        <div>
+          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+            <ClockCircleOutlined /> 时间范围
+          </Text>
+          <Radio.Group
+            value={filters.time_range === undefined ? null : filters.time_range}
+            onChange={(e) => onTimeRangeChange(e.target.value)}
+            size="small"
+            optionType="button"
+            buttonStyle="solid"
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}
+          >
+            {TIME_RANGES.map((tr) => (
+              <Radio.Button key={String(tr.value)} value={tr.value} style={{ fontSize: 12 }}>
+                {tr.label}
+              </Radio.Button>
             ))}
           </Radio.Group>
         </div>

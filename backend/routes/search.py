@@ -6,6 +6,8 @@ from backend.utils.logger import get_logger
 logger = get_logger("routes.search")
 search_bp = Blueprint("search", __name__)
 
+VALID_TIME_RANGES = {"week", "month", "year", "3years", None}
+
 
 @search_bp.route("/api/search", methods=["POST"])
 def do_search():
@@ -18,6 +20,11 @@ def do_search():
 
     sources = data.get("sources") or None
     filters = data.get("filters") or {}
+
+    # Validate time_range
+    time_range = filters.get("time_range")
+    if time_range not in VALID_TIME_RANGES:
+        return jsonify({"error": f"Invalid time_range: {time_range}"}), 400
 
     try:
         result = search_service.search(query, sources, filters)

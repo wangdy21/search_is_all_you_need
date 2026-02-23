@@ -2,6 +2,7 @@ import sys
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from urllib.parse import quote_plus
+from datetime import datetime, timedelta
 
 # Ensure project root is in path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -29,6 +30,22 @@ class SearchAgent:
         self.proxy = config.HTTP_PROXY if config.HTTP_PROXY else None
         if self.proxy:
             logger.info(f"Using proxy: {self.proxy}")
+
+    @staticmethod
+    def _calculate_date_range(time_range):
+        """Calculate start/end dates from a time_range keyword.
+
+        Returns (start_date, end_date) as datetime objects, or None.
+        """
+        if not time_range:
+            return None
+        days_map = {"week": 7, "month": 30, "year": 365, "3years": 1095}
+        days = days_map.get(time_range)
+        if not days:
+            return None
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        return (start_date, end_date)
 
     def search_all_sources(self, query, sources, filters=None):
         """
@@ -115,6 +132,10 @@ class SearchAgent:
         self.rate_limiter.acquire("duckduckgo", timeout=10)
         results = []
 
+        time_range = filters.get("time_range")
+        if time_range:
+            logger.info(f"DuckDuckGo (Bing): time filtering not supported, ignoring time_range={time_range}")
+
         try:
             search_url = f"https://cn.bing.com/search?q={quote_plus(query)}&count={self.max_results}"
             headers = {
@@ -160,10 +181,20 @@ class SearchAgent:
         results = []
 
         try:
+            # Apply time range filter via arXiv query syntax
+            search_query = query
+            date_range = self._calculate_date_range(filters.get("time_range"))
+            if date_range:
+                start_date, end_date = date_range
+                start_str = start_date.strftime("%Y%m%d0000")
+                end_str = end_date.strftime("%Y%m%d2359")
+                search_query = f"{query} AND submittedDate:[{start_str} TO {end_str}]"
+                logger.info(f"arXiv date filter: {start_str} to {end_str}")
+
             # Use smaller page_size and add delay to avoid 429 rate limiting
             client = arxiv.Client(page_size=self.max_results, delay_seconds=1.0, num_retries=2)
             search = arxiv.Search(
-                query=query,
+                query=search_query,
                 max_results=self.max_results,
                 sort_by=arxiv.SortCriterion.Relevance,
             )
@@ -201,6 +232,16 @@ class SearchAgent:
                 "limit": min(self.max_results, 10),
                 "fields": "title,url,abstract,authors,year,citationCount,venue,externalIds",
             }
+
+            # Apply time range filter via year parameter
+            date_range = self._calculate_date_range(filters.get("time_range"))
+            if date_range:
+                start_date, end_date = date_range
+                start_year = start_date.year
+                end_year = end_date.year
+                params["year"] = f"{start_year}-{end_year}" if start_year != end_year else str(end_year)
+                logger.info(f"Semantic Scholar year filter: {params['year']}")
+
             headers = {
                 "Accept": "application/json",
                 "User-Agent": "SearchIsAllYouNeed/1.0",
@@ -260,6 +301,10 @@ class SearchAgent:
         """Search Zhihu content via Bing site: search."""
         self.rate_limiter.acquire("zhihu", timeout=15)
         results = []
+
+        time_range = filters.get("time_range")
+        if time_range:
+            logger.info(f"Zhihu (Bing): time filtering not supported, ignoring time_range={time_range}")
 
         try:
             # Use Bing China for better accessibility
