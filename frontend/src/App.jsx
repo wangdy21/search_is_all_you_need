@@ -83,6 +83,8 @@ export default function App() {
             sources={filters.sources}
             onSourcesChange={updateSources}
             loading={searchLoading}
+            timeRange={filters.time_range}
+            onTimeRangeChange={updateTimeRange}
           />
         </div>
         <Button
@@ -112,7 +114,6 @@ export default function App() {
               <FilterPanel
                 filters={filters}
                 onCategoryChange={updateCategory}
-                onTimeRangeChange={updateTimeRange}
                 resultCounts={resultCounts}
               />
             </div>

@@ -47,6 +47,29 @@ class SearchAgent:
         start_date = end_date - timedelta(days=days)
         return (start_date, end_date)
 
+    @staticmethod
+    def _parse_published_date(published_str):
+        """Try to parse a published date string to a naive UTC datetime.
+
+        Returns datetime or None if unparseable.
+        """
+        if not published_str:
+            return None
+        # ISO format (e.g. "2024-06-23T12:00:00+00:00")
+        try:
+            dt = datetime.fromisoformat(published_str.replace("Z", "+00:00"))
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        except (ValueError, AttributeError):
+            pass
+        # Year-only (e.g. "2024") — use end of year to give benefit of doubt
+        try:
+            year = int(published_str.strip())
+            if 1900 <= year <= 2100:
+                return datetime(year, 12, 31)
+        except (ValueError, TypeError):
+            pass
+        return None
+
     def search_all_sources(self, query, sources, filters=None):
         """
         Concurrently search multiple sources.
@@ -121,6 +144,30 @@ class SearchAgent:
                 seen_urls.add(url)
                 unique_results.append(item)
 
+        # Post-filter by time range as a safety net across all sources.
+        # Source-level filtering may be imprecise (e.g. Scholar year-only)
+        # or unavailable (e.g. Bing). Results without parseable dates are kept.
+        date_range = self._calculate_date_range(filters.get("time_range"))
+        if date_range:
+            start_date = date_range[0]
+            filtered = []
+            for item in unique_results:
+                pub_date = self._parse_published_date(item.get("published", ""))
+                if pub_date is None:
+                    # No date info available (e.g. Bing results), keep
+                    filtered.append(item)
+                elif pub_date >= start_date:
+                    filtered.append(item)
+                else:
+                    logger.debug(
+                        f"Post-filter removed: '{item.get('title', '')[:50]}' "
+                        f"published={item.get('published')} source={item.get('source')}"
+                    )
+            logger.info(
+                f"Time range post-filter: {len(unique_results)} -> {len(filtered)} results"
+            )
+            unique_results = filtered
+
         return {
             "results": unique_results,
             "total": len(unique_results),
@@ -181,24 +228,32 @@ class SearchAgent:
         results = []
 
         try:
-            # Apply time range filter via arXiv query syntax
-            search_query = query
             date_range = self._calculate_date_range(filters.get("time_range"))
+
+            # When filtering by time, sort by date (newest first) and fetch extra
+            # to compensate for post-filtering; arXiv API does NOT support
+            # submittedDate as a query field, so we must filter locally.
+            sort_by = arxiv.SortCriterion.Relevance
+            fetch_limit = self.max_results
             if date_range:
-                start_date, end_date = date_range
-                start_str = start_date.strftime("%Y%m%d0000")
-                end_str = end_date.strftime("%Y%m%d2359")
-                search_query = f"{query} AND submittedDate:[{start_str} TO {end_str}]"
-                logger.info(f"arXiv date filter: {start_str} to {end_str}")
+                sort_by = arxiv.SortCriterion.SubmittedDate
+                fetch_limit = self.max_results * 5
+                logger.info(f"arXiv date filter active: {date_range[0].strftime('%Y-%m-%d')} to {date_range[1].strftime('%Y-%m-%d')}")
 
             # Use smaller page_size and add delay to avoid 429 rate limiting
-            client = arxiv.Client(page_size=self.max_results, delay_seconds=1.0, num_retries=2)
+            client = arxiv.Client(page_size=fetch_limit, delay_seconds=1.0, num_retries=2)
             search = arxiv.Search(
-                query=search_query,
-                max_results=self.max_results,
-                sort_by=arxiv.SortCriterion.Relevance,
+                query=query,
+                max_results=fetch_limit,
+                sort_by=sort_by,
             )
             for paper in client.results(search):
+                # Post-filter by date range using the actual published datetime
+                if date_range and paper.published:
+                    pub_naive = paper.published.replace(tzinfo=None) if paper.published.tzinfo else paper.published
+                    if pub_naive < date_range[0]:
+                        continue
+
                 arxiv_id = paper.entry_id.split("/abs/")[-1]
                 results.append({
                     "title": paper.title,
@@ -213,6 +268,9 @@ class SearchAgent:
                         "categories": [c for c in (paper.categories or [])],
                     },
                 })
+
+                if len(results) >= self.max_results:
+                    break
         except Exception as e:
             logger.error(f"arXiv search error: {e}")
             raise
