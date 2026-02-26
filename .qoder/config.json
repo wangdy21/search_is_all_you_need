@@ -9,7 +9,7 @@
         "max_results_per_source": 15,
         "timeout_seconds": 60,
         "cache_expire_hours": 24,
-        "default_sources": ["duckduckgo", "arxiv"]
+        "default_sources": ["scholar", "arxiv"]
     },
     "download_settings": {
         "save_directory": "data/downloads",

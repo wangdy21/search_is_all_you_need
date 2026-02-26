@@ -208,3 +208,102 @@ class AnalysisAgent:
                     continue
 
         raise ValueError("No valid JSON found in response")
+
+    def evaluate_relevance_batch(self, query, results, batch_size=10):
+        """
+        Evaluate semantic relevance of search results to the query in batches.
+
+        Args:
+            query: The original search query string.
+            results: List of search result dicts with 'title' and 'snippet'.
+            batch_size: Number of results to evaluate per API call.
+
+        Returns:
+            List of dicts with original result data plus 'relevance_score' (0-100).
+        """
+        if not results:
+            return []
+
+        scored_results = []
+
+        # Process in batches to optimize API calls
+        for i in range(0, len(results), batch_size):
+            batch = results[i:i + batch_size]
+            batch_scores = self._evaluate_batch(query, batch)
+
+            for j, item in enumerate(batch):
+                score = batch_scores.get(str(j), 50)  # Default to 50 if not found
+                scored_item = dict(item)
+                scored_item["relevance_score"] = score
+                scored_results.append(scored_item)
+
+        return scored_results
+
+    def _evaluate_batch(self, query, batch):
+        """
+        Evaluate relevance for a batch of results in a single API call.
+
+        Returns:
+            dict mapping index (as string) to relevance score (0-100).
+        """
+        if not self.client:
+            logger.warning("AI client not configured, skipping relevance evaluation")
+            return {}
+
+        # Build the prompt with numbered results
+        results_text = []
+        for idx, item in enumerate(batch):
+            title = item.get("title", "")[:100]
+            snippet = item.get("snippet", "")[:200]
+            results_text.append(f"[{idx}] Title: {title}\nSnippet: {snippet}")
+
+        prompt = f"""Evaluate the semantic relevance of each search result to the query.
+
+Query: "{query}"
+
+Search Results:
+{chr(10).join(results_text)}
+
+For each result, determine how semantically relevant it is to the query topic.
+Consider:
+- Does the result directly discuss the query topic?
+- Are the key concepts and domain aligned?
+- Would this result be useful for someone researching the query topic?
+
+Return a JSON object mapping result index to relevance score (0-100):
+- 80-100: Highly relevant, directly addresses the query topic
+- 60-79: Moderately relevant, related to the query domain
+- 40-59: Weakly relevant, tangential connection
+- 0-39: Not relevant, different topic/domain
+
+Example response format:
+{{"0": 85, "1": 45, "2": 92, "3": 20}}
+
+Return ONLY the JSON object, no explanation."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,  # Lower temperature for more consistent scoring
+                max_tokens=500,
+            )
+            text = response.choices[0].message.content
+
+            # Parse the JSON response
+            scores = self._extract_json(text)
+
+            # Validate and convert scores
+            validated_scores = {}
+            for key, value in scores.items():
+                try:
+                    score = int(value)
+                    validated_scores[str(key)] = max(0, min(100, score))
+                except (ValueError, TypeError):
+                    validated_scores[str(key)] = 50
+
+            return validated_scores
+
+        except Exception as e:
+            logger.error(f"Relevance evaluation failed: {e}")
+            return {}

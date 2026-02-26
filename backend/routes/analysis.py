@@ -43,6 +43,28 @@ def translate():
         return jsonify({"error": "Translation failed", "detail": str(e)}), 500
 
 
+@analysis_bp.route("/api/translate", methods=["POST"])
+def translate_simple():
+    """Simple translate endpoint for batch export."""
+    data = request.get_json(silent=True) or {}
+
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    target_lang = data.get("target_lang", "zh")
+
+    try:
+        result = analysis_service.translate(text, target_lang)
+        return jsonify({
+            "translated": result.get("translated_text", text),
+            "source_lang": result.get("source_lang", ""),
+        }), 200
+    except Exception as e:
+        logger.error(f"Simple translate error: {e}", exc_info=True)
+        return jsonify({"error": "Translation failed", "translated": text}), 200
+
+
 @analysis_bp.route("/api/analysis/paper", methods=["POST"])
 def analyze_paper():
     """Deep analysis of academic paper."""

@@ -1,6 +1,6 @@
-import React from 'react'
-import { Input, Checkbox, Radio, Space } from 'antd'
-import { SearchOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import React, { useState } from 'react'
+import { Input, Checkbox, Radio, Space, Button, Row, Col } from 'antd'
+import { SearchOutlined, ClockCircleOutlined, PlusOutlined, MinusOutlined } from '@ant-design/icons'
 
 const SOURCE_OPTIONS = [
   { label: 'DuckDuckGo', value: 'duckduckgo' },
@@ -17,24 +17,91 @@ const TIME_RANGES = [
   { label: '近三年', value: '3years' },
 ]
 
+const MAX_KEYWORDS = 5
+
 export default function SearchBar({ onSearch, sources, onSourcesChange, loading, timeRange, onTimeRangeChange }) {
-  const handleSearch = (value) => {
-    if (value.trim()) {
-      onSearch(value.trim())
+  const [keywords, setKeywords] = useState([''])
+
+  const handleKeywordChange = (index, value) => {
+    const newKeywords = [...keywords]
+    newKeywords[index] = value
+    setKeywords(newKeywords)
+  }
+
+  const addKeywordInput = () => {
+    if (keywords.length < MAX_KEYWORDS) {
+      setKeywords([...keywords, ''])
+    }
+  }
+
+  const removeKeywordInput = (index) => {
+    if (keywords.length > 1) {
+      const newKeywords = keywords.filter((_, i) => i !== index)
+      setKeywords(newKeywords)
+    }
+  }
+
+  const handleSearch = () => {
+    const validKeywords = keywords.map(k => k.trim()).filter(k => k.length > 0)
+    if (validKeywords.length > 0) {
+      onSearch(validKeywords)
+    }
+  }
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleSearch()
     }
   }
 
   return (
     <div className="search-section">
-      <Input.Search
-        placeholder="输入关键词搜索全网内容..."
-        enterButton={<><SearchOutlined /> 搜索</>}
-        size="large"
-        allowClear
-        loading={loading}
-        onSearch={handleSearch}
-        style={{ marginBottom: 12 }}
-      />
+      <div style={{ marginBottom: 12 }}>
+        {keywords.map((keyword, index) => (
+          <Row key={index} gutter={8} style={{ marginBottom: 8 }}>
+            <Col flex="auto">
+              <Input
+                placeholder={`关键词 ${index + 1}`}
+                value={keyword}
+                onChange={(e) => handleKeywordChange(index, e.target.value)}
+                onKeyPress={handleKeyPress}
+                size="large"
+                allowClear
+              />
+            </Col>
+            <Col flex="none">
+              {keywords.length > 1 && (
+                <Button
+                  icon={<MinusOutlined />}
+                  onClick={() => removeKeywordInput(index)}
+                  size="large"
+                  danger
+                />
+              )}
+            </Col>
+          </Row>
+        ))}
+        <Space style={{ marginTop: 8 }}>
+          {keywords.length < MAX_KEYWORDS && (
+            <Button
+              icon={<PlusOutlined />}
+              onClick={addKeywordInput}
+              size="small"
+            >
+              添加关键词
+            </Button>
+          )}
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={handleSearch}
+            loading={loading}
+            size="large"
+          >
+            搜索
+          </Button>
+        </Space>
+      </div>
       <Space wrap>
         <span style={{ color: '#fff', fontSize: 13 }}>搜索源：</span>
         <Checkbox.Group

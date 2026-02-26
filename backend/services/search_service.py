@@ -12,11 +12,15 @@ from backend.utils.logger import get_logger
 
 logger = get_logger("search_service")
 
-# Lazy-initialized search agent
+# Lazy-initialized agents
 _search_agent = None
+_analysis_agent = None
+
+# Default relevance threshold (0-100)
+DEFAULT_RELEVANCE_THRESHOLD = 40
 
 
-def _get_agent():
+def _get_search_agent():
     global _search_agent
     if _search_agent is None:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".qoder"))
@@ -25,14 +29,64 @@ def _get_agent():
     return _search_agent
 
 
+def _get_analysis_agent():
+    global _analysis_agent
+    if _analysis_agent is None:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".qoder"))
+        from agents.analysis_agent import AnalysisAgent
+        _analysis_agent = AnalysisAgent()
+    return _analysis_agent
+
+
+def _apply_semantic_filter(query, results, threshold=DEFAULT_RELEVANCE_THRESHOLD):
+    """
+    Apply AI-driven semantic relevance filtering to search results.
+
+    Args:
+        query: Original search query.
+        results: List of search result dicts.
+        threshold: Minimum relevance score (0-100) to keep a result.
+
+    Returns:
+        Filtered list of results sorted by relevance score.
+    """
+    if not results:
+        return results
+
+    config = get_config()
+    # Allow disabling semantic filter via config
+    if not config.SEARCH_DEFAULTS.get("enable_semantic_filter", True):
+        return results
+
+    try:
+        agent = _get_analysis_agent()
+        scored_results = agent.evaluate_relevance_batch(query, results)
+
+        # Filter by threshold and sort by relevance
+        filtered = [r for r in scored_results if r.get("relevance_score", 0) >= threshold]
+        filtered.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+
+        logger.info(
+            f"Semantic filter: {len(results)} -> {len(filtered)} results "
+            f"(threshold={threshold})"
+        )
+
+        return filtered
+
+    except Exception as e:
+        logger.warning(f"Semantic filter failed, returning unfiltered results: {e}")
+        return results
+
+
 def search(query, sources=None, filters=None):
     """
-    Execute multi-source search with caching and classification.
+    Execute multi-source search with caching, classification and semantic filtering.
 
     Args:
         query: Search keyword string.
         sources: List of source names. Defaults to config defaults.
-        filters: Optional filter dict.
+        filters: Optional filter dict. May include 'semantic_filter' (bool) and
+                 'relevance_threshold' (int 0-100).
 
     Returns:
         {"results": [...], "total": int, "sources_status": {...}}
@@ -41,7 +95,11 @@ def search(query, sources=None, filters=None):
     sources = sources or config.SEARCH_DEFAULTS.get("default_sources", ["duckduckgo", "arxiv"])
     filters = filters or {}
 
-    # Check cache
+    # Extract semantic filter settings from filters
+    enable_semantic = filters.get("semantic_filter", True)
+    relevance_threshold = filters.get("relevance_threshold", DEFAULT_RELEVANCE_THRESHOLD)
+
+    # Check cache (includes semantic filter in key)
     cache_key = cache_service.make_search_cache_key(query, sources, filters)
     cached = cache_service.get_search_cache(cache_key)
     if cached:
@@ -49,12 +107,19 @@ def search(query, sources=None, filters=None):
         return cached
 
     # Execute search
-    agent = _get_agent()
+    agent = _get_search_agent()
     result = agent.search_all_sources(query, sources, filters)
 
     # Classify each result
     for item in result.get("results", []):
         item["category"] = classify(item.get("url", ""), item.get("source", ""))
+
+    # Apply semantic filtering if enabled
+    if enable_semantic and result.get("results"):
+        result["results"] = _apply_semantic_filter(
+            query, result["results"], threshold=relevance_threshold
+        )
+        result["total"] = len(result["results"])
 
     # Store in cache
     ttl = config.SEARCH_DEFAULTS.get("cache_expire_hours", 24)
@@ -65,6 +130,60 @@ def search(query, sources=None, filters=None):
 
     logger.info(f"Search completed: query='{query}', total={result.get('total', 0)}")
     return result
+
+
+def search_multiple(queries, sources=None, filters=None):
+    """
+    Execute search for multiple keywords independently and merge results.
+
+    Args:
+        queries: List of search keyword strings.
+        sources: List of source names. Defaults to config defaults.
+        filters: Optional filter dict.
+
+    Returns:
+        {"results": [...], "total": int, "sources_status": {...}}
+    """
+    config = get_config()
+    sources = sources or config.SEARCH_DEFAULTS.get("default_sources", ["duckduckgo", "arxiv"])
+    filters = filters or {}
+    sources_set = set(sources)
+
+    all_results = []
+    merged_status = {}
+
+    for query in queries:
+        result = search(query, sources, filters)
+        
+        # Filter results by selected sources
+        for item in result.get("results", []):
+            item_source = item.get("source", "")
+            if item_source in sources_set:
+                all_results.append(item)
+        
+        # Merge sources_status (keep worst status per source)
+        for src, status in result.get("sources_status", {}).items():
+            if src not in merged_status:
+                merged_status[src] = status
+            elif merged_status[src] == "success" and status != "success":
+                merged_status[src] = status
+
+    # Deduplicate by URL
+    seen_urls = set()
+    unique_results = []
+    for item in all_results:
+        url = item.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_results.append(item)
+
+    logger.info(f"Multi-query search: queries={queries}, merged_total={len(unique_results)}")
+    
+    return {
+        "results": unique_results,
+        "total": len(unique_results),
+        "sources_status": merged_status,
+    }
 
 
 def _save_history(query, filters, result_count):

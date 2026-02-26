@@ -26,6 +26,15 @@ export default function App() {
     updateSources,
     updateCategory,
     updateTimeRange,
+    updateSemanticFilter,
+    updateRelevanceThreshold,
+    selectedIds,
+    toggleSelect,
+    selectAll,
+    deselectAll,
+    invertSelection,
+    removeSelected,
+    getSelectedResults,
   } = useSearch()
 
   const {
@@ -107,6 +116,13 @@ export default function App() {
               sourcesStatus={sourcesStatus}
               onAnalyze={openAnalysis}
               onDownload={handleDownload}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onSelectAll={selectAll}
+              onDeselectAll={deselectAll}
+              onInvertSelection={invertSelection}
+              onRemoveSelected={removeSelected}
+              getSelectedResults={getSelectedResults}
             />
           </div>
           {results.length > 0 && (
@@ -114,6 +130,8 @@ export default function App() {
               <FilterPanel
                 filters={filters}
                 onCategoryChange={updateCategory}
+                onSemanticFilterChange={updateSemanticFilter}
+                onRelevanceThresholdChange={updateRelevanceThreshold}
                 resultCounts={resultCounts}
               />
             </div>
