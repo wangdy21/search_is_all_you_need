@@ -31,6 +31,7 @@
 本文件面向后端与前端开发者及使用者，系统化说明 AI 分析相关 API 的设计与使用方法，覆盖以下端点：
 - POST /api/analysis/summarize：生成内容摘要与关键要点
 - POST /api/analysis/translate：将内容翻译为目标语言
+- POST /api/translate：**新增** 简化翻译接口，专为批量导出功能设计
 - POST /api/analysis/paper：对学术论文进行深度分析
 
 文档内容包括：
@@ -62,7 +63,7 @@ H --> |"/api"| B
 I --> |"/api"| B
 ```
 
-图表来源
+**图表来源**
 - [backend/app.py](file://backend/app.py#L35-L39)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L1-L7)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L1-L10)
@@ -73,7 +74,7 @@ I --> |"/api"| B
 - [frontend/src/hooks/useAnalysis.js](file://frontend/src/hooks/useAnalysis.js#L11-L57)
 - [frontend/src/services/api.js](file://frontend/src/services/api.js#L4-L8)
 
-章节来源
+**章节来源**
 - [backend/app.py](file://backend/app.py#L21-L67)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L1-L7)
 
@@ -84,7 +85,7 @@ I --> |"/api"| B
 - AI 代理：封装 LLM 客户端初始化、提示词构造与响应解析。
 - 配置层：统一读取环境变量与 .qoder/config.json 中的分析设置。
 
-章节来源
+**章节来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L65)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L16-L90)
 - [backend/services/cache_service.py](file://backend/services/cache_service.py#L22-L86)
@@ -103,7 +104,7 @@ participant Svc as "分析服务<br/>analysis_service.py"
 participant Cache as "缓存服务<br/>cache_service.py"
 participant Agent as "AI 代理<br/>analysis_agent.py"
 participant LLM as "LLM 提供商"
-Client->>Route : "POST /api/analysis/*"
+Client->>Route : "POST /api/analysis/* 或 /api/translate"
 Route->>Svc : "调用对应分析函数"
 Svc->>Cache : "生成缓存键并查询"
 alt "命中缓存"
@@ -119,7 +120,7 @@ Svc-->>Route : "返回结果"
 Route-->>Client : "JSON 响应"
 ```
 
-图表来源
+**图表来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L65)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L25-L90)
 - [backend/services/cache_service.py](file://backend/services/cache_service.py#L57-L86)
@@ -149,7 +150,7 @@ Route-->>Client : "JSON 响应"
 - 前端调用参考
   - [frontend/src/hooks/useAnalysis.js](file://frontend/src/hooks/useAnalysis.js#L11-L24)
 
-章节来源
+**章节来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L25)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L25-L44)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L86-L115)
@@ -180,13 +181,44 @@ Route-->>Client : "JSON 响应"
 - 前端调用参考
   - [frontend/src/hooks/useAnalysis.js](file://frontend/src/hooks/useAnalysis.js#L26-L42)
 
-章节来源
+**章节来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L27-L44)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L46-L65)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L116-L139)
 - [backend/config.py](file://backend/config.py#L67-L73)
 - [.qoder/config.json](file://.qoder/config.json#L22-L29)
 - [frontend/src/hooks/useAnalysis.js](file://frontend/src/hooks/useAnalysis.js#L26-L42)
+
+### POST /api/translate **新增**
+- 功能：**简化翻译接口，专为批量导出功能设计**。相比标准翻译接口，返回格式更简洁，专门用于批量导出场景。
+- 请求参数
+  - text：必填，待翻译文本
+  - target_lang：可选，默认 zh
+- 响应字段
+  - translated：翻译结果文本
+  - source_lang：源语言（示例：en）
+  - error：错误信息（可选）
+- 文本格式与长度
+  - 支持任意文本；内部会截断至配置的最大长度
+- AI 模型与参数
+  - 由 AnalysisAgent 根据 provider 与 model 配置初始化
+  - 温度与最大长度来自配置项
+- 使用场景与最佳实践
+  - 专为批量导出功能设计，简化前端处理逻辑
+  - 适合需要大量文本翻译但不需要复杂错误处理的场景
+  - 当翻译失败时，返回原文本而非错误对象，确保批量导出的稳定性
+- 错误处理
+  - 参数缺失返回 400
+  - 翻译失败时返回 200，包含原始文本和错误标记
+- 前端调用参考
+  - 无前端直接调用示例（主要用于后端批量导出）
+
+**章节来源**
+- [backend/routes/analysis.py](file://backend/routes/analysis.py#L46-L66)
+- [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L46-L65)
+- [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L116-L139)
+- [backend/config.py](file://backend/config.py#L67-L73)
+- [.qoder/config.json](file://.qoder/config.json#L22-L29)
 
 ### POST /api/analysis/paper
 - 功能：对学术论文进行深度分析，输出摘要概述、方法、创新点、结果与结论等维度。
@@ -216,8 +248,8 @@ Route-->>Client : "JSON 响应"
 - 前端调用参考
   - [frontend/src/hooks/useAnalysis.js](file://frontend/src/hooks/useAnalysis.js#L44-L57)
 
-章节来源
-- [backend/routes/analysis.py](file://backend/routes/analysis.py#L46-L65)
+**章节来源**
+- [backend/routes/analysis.py](file://backend/routes/analysis.py#L68-L88)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L67-L90)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L141-L185)
 - [backend/config.py](file://backend/config.py#L67-L73)
@@ -256,12 +288,12 @@ class Config {
 AnalysisAgent --> Config : "读取配置"
 ```
 
-图表来源
+**图表来源**
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L18-L33)
 - [backend/config.py](file://backend/config.py#L67-L73)
 - [.qoder/config.json](file://.qoder/config.json#L22-L29)
 
-章节来源
+**章节来源**
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L18-L33)
 - [backend/config.py](file://backend/config.py#L67-L73)
 - [.qoder/config.json](file://.qoder/config.json#L22-L29)
@@ -290,11 +322,11 @@ ReturnCache --> End(["结束"])
 ReturnNew --> End
 ```
 
-图表来源
+**图表来源**
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L32-L43)
 - [backend/services/cache_service.py](file://backend/services/cache_service.py#L57-L86)
 
-章节来源
+**章节来源**
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L32-L43)
 - [backend/services/cache_service.py](file://backend/services/cache_service.py#L57-L86)
 
@@ -313,7 +345,7 @@ FE1["useAnalysis.js"] --> R
 FE2["api.js"] --> R
 ```
 
-图表来源
+**图表来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L1-L7)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L1-L10)
 - [backend/services/cache_service.py](file://backend/services/cache_service.py#L1-L10)
@@ -323,7 +355,7 @@ FE2["api.js"] --> R
 - [frontend/src/hooks/useAnalysis.js](file://frontend/src/hooks/useAnalysis.js#L1-L10)
 - [frontend/src/services/api.js](file://frontend/src/services/api.js#L1-L8)
 
-章节来源
+**章节来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L1-L7)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L1-L10)
 - [backend/services/cache_service.py](file://backend/services/cache_service.py#L1-L10)
@@ -339,8 +371,6 @@ FE2["api.js"] --> R
 - 并发与限流：结合全局速率限制与 LLM 限额合理规划调用量
 - 前端超时：Axios 默认 60 秒超时，建议根据内容长度调整
 
-[本节为通用指导，不直接分析具体文件]
-
 ## 故障排查指南
 - 常见错误码
   - 400：请求参数缺失（如 content 或论文必需字段）
@@ -352,7 +382,7 @@ FE2["api.js"] --> R
 - 集成测试参考
   - 包含对分析接口参数校验的测试用例
 
-章节来源
+**章节来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L16-L24)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L33-L43)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L57-L65)
@@ -360,9 +390,7 @@ FE2["api.js"] --> R
 - [backend/test_integration.py](file://backend/test_integration.py#L55-L65)
 
 ## 结论
-本分析 API 通过统一的路由与服务层抽象，结合缓存与 AI 代理，提供了稳定高效的摘要、翻译与论文分析能力。配合灵活的模型配置与前端集成，可满足多场景下的内容理解与知识提炼需求。
-
-[本节为总结性内容，不直接分析具体文件]
+本分析 API 通过统一的路由与服务层抽象，结合缓存与 AI 代理，提供了稳定高效的摘要、翻译与论文分析能力。配合灵活的模型配置与前端集成，可满足多场景下的内容理解与知识提炼需求。新增的简化翻译接口进一步完善了批量导出功能的用户体验。
 
 ## 附录
 
@@ -377,11 +405,16 @@ FE2["api.js"] --> R
   - 示例请求体：{"content": "...", "target_lang": "zh"}
   - 示例响应：{"translated_text": "...", "source_lang": "en", "error": null}
   - 参考实现：[backend/routes/analysis.py](file://backend/routes/analysis.py#L27-L44)，[backend/services/analysis_service.py](file://backend/services/analysis_service.py#L46-L65)
+- 简化翻译 **新增**
+  - 请求：POST /api/translate
+  - 示例请求体：{"text": "...", "target_lang": "zh"}
+  - 示例响应：{"translated": "...", "source_lang": "en"}
+  - 参考实现：[backend/routes/analysis.py](file://backend/routes/analysis.py#L46-L66)，[backend/services/analysis_service.py](file://backend/services/analysis_service.py#L46-L65)
 - 论文分析
   - 请求：POST /api/analysis/paper
   - 示例请求体：{"title": "...", "abstract": "..."}
   - 示例响应：{"abstract_summary": "...", "method": "...", "innovation": "...", "results": "...", "conclusion": "...", "error": null}
-  - 参考实现：[backend/routes/analysis.py](file://backend/routes/analysis.py#L46-L65)，[backend/services/analysis_service.py](file://backend/services/analysis_service.py#L67-L90)
+  - 参考实现：[backend/routes/analysis.py](file://backend/routes/analysis.py#L68-L88)，[backend/services/analysis_service.py](file://backend/services/analysis_service.py#L67-L90)
 
 ### 配置清单（关键项）
 - 环境变量
@@ -394,7 +427,7 @@ FE2["api.js"] --> R
   - analysis_settings.temperature：采样温度
   - analysis_settings.cache_expire_days：缓存过期天数
 
-章节来源
+**章节来源**
 - [.qoder/config.json](file://.qoder/config.json#L22-L29)
 - [backend/config.py](file://backend/config.py#L38-L48)
 - [backend/config.py](file://backend/config.py#L67-L73)

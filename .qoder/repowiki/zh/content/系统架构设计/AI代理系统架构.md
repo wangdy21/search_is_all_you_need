@@ -8,13 +8,18 @@
 - [.qoder/config.json](file://.qoder/config.json)
 - [backend/routes/search.py](file://backend/routes/search.py)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py)
+- [backend/routes/download.py](file://backend/routes/download.py)
+- [backend/routes/history.py](file://backend/routes/history.py)
 - [backend/services/search_service.py](file://backend/services/search_service.py)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py)
+- [backend/services/cache_service.py](file://backend/services/cache_service.py)
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py)
+- [backend/services/classification_service.py](file://backend/services/classification_service.py)
+- [backend/models/schemas.py](file://backend/models/schemas.py)
 - [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py)
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py)
 - [.qoder/skills/web_scraping_skill.py](file://.qoder/skills/web_scraping_skill.py)
-- [backend/models/schemas.py](file://backend/models/schemas.py)
 </cite>
 
 ## 目录
@@ -30,18 +35,20 @@
 10. [附录](#附录)
 
 ## 简介
-本项目“Search Is All You Need”提供多源内容检索与AI智能分析能力，采用前后端分离架构，后端基于Flask，前端基于React/Vite。AI代理系统是本项目的核心抽象层，负责：
+本项目"Search Is All You Need"提供多源内容检索与AI智能分析能力，采用前后端分离架构，后端基于Flask，前端基于React/Vite。AI代理系统是本项目的核心抽象层，负责：
 - 搜索代理：统一调度多数据源并发搜索，进行结果去重与分类
 - 分析代理：封装LLM提供商（智谱AI/DeepSeek）的调用，提供摘要、翻译、论文解析等能力
 - 技能模块：提供PDF下载与网页抓取等可复用能力
 - 配置驱动：通过运行时配置文件与环境变量统一管理提供商、模型、速率限制、缓存等参数
+- 缓存机制：多级缓存策略，减少重复请求与API开销
+- 速率限制：令牌桶算法实现细粒度的API限流控制
 
 本架构强调可扩展性与可维护性，支持通过配置切换LLM提供商、新增数据源与技能模块。
 
 ## 项目结构
 后端采用分层组织：
 - 应用入口与路由：Flask应用、蓝图路由
-- 业务服务：搜索服务、分析服务
+- 业务服务：搜索服务、分析服务、缓存服务、速率限制器、分类服务
 - 配置管理：合并.env与.qoder/config.json
 - 数据模型：数据库表结构定义
 - AI代理与技能：.qoder目录下的agents与skills
@@ -54,8 +61,13 @@ CFG["配置管理<br/>backend/config.py"]
 DB["数据库模型<br/>backend/models/schemas.py"]
 RT_SEARCH["搜索路由<br/>backend/routes/search.py"]
 RT_ANALYSIS["分析路由<br/>backend/routes/analysis.py"]
+RT_DOWNLOAD["下载路由<br/>backend/routes/download.py"]
+RT_HISTORY["历史路由<br/>backend/routes/history.py"]
 SVC_SEARCH["搜索服务<br/>backend/services/search_service.py"]
 SVC_ANALYSIS["分析服务<br/>backend/services/analysis_service.py"]
+SVC_CACHE["缓存服务<br/>backend/services/cache_service.py"]
+SVC_RATE["速率限制器<br/>backend/services/rate_limiter.py"]
+SVC_CLASS["分类服务<br/>backend/services/classification_service.py"]
 AG_SEARCH["搜索代理<br/>.qoder/agents/search_agent.py"]
 AG_ANALYSIS["分析代理<br/>.qoder/agents/analysis_agent.py"]
 SK_PDF["PDF下载技能<br/>.qoder/skills/pdf_download_skill.py"]
@@ -63,30 +75,42 @@ SK_WEB["网页抓取技能<br/>.qoder/skills/web_scraping_skill.py"]
 end
 APP --> RT_SEARCH
 APP --> RT_ANALYSIS
+APP --> RT_DOWNLOAD
+APP --> RT_HISTORY
 RT_SEARCH --> SVC_SEARCH
 RT_ANALYSIS --> SVC_ANALYSIS
+RT_DOWNLOAD --> SK_PDF
+RT_HISTORY --> DB
 SVC_SEARCH --> AG_SEARCH
 SVC_ANALYSIS --> AG_ANALYSIS
+SVC_SEARCH --> SVC_CACHE
+SVC_ANALYSIS --> SVC_CACHE
+SVC_SEARCH --> SVC_RATE
+SVC_ANALYSIS --> CFG
 AG_SEARCH --> SK_WEB
 AG_ANALYSIS --> CFG
 SVC_SEARCH --> DB
 SVC_ANALYSIS --> DB
 ```
 
-图表来源
+**图表来源**
 - [backend/app.py](file://backend/app.py#L21-L67)
 - [backend/routes/search.py](file://backend/routes/search.py#L10-L27)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L65)
+- [backend/routes/download.py](file://backend/routes/download.py#L1-L200)
+- [backend/routes/history.py](file://backend/routes/history.py#L1-L200)
 - [backend/services/search_service.py](file://backend/services/search_service.py#L28-L67)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L25-L90)
-- [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L33-L111)
-- [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L13-L33)
+- [backend/services/cache_service.py](file://backend/services/cache_service.py#L1-L104)
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py#L1-L75)
+- [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L21-L111)
+- [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L13-L61)
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L21-L48)
 - [.qoder/skills/web_scraping_skill.py](file://.qoder/skills/web_scraping_skill.py#L27-L46)
 - [backend/models/schemas.py](file://backend/models/schemas.py#L1-L37)
 
-章节来源
-- [README.md](file://README.md#L376-L404)
+**章节来源**
+- [README.md](file://README.md#L403-L431)
 - [backend/app.py](file://backend/app.py#L21-L67)
 
 ## 核心组件
@@ -103,20 +127,28 @@ SVC_ANALYSIS --> DB
   - 网页抓取技能：随机UA、解析Zhihu内容、提取OpenGraph元数据
 - 配置驱动
   - 合并.env与.qoder/config.json，统一管理提供商、模型、速率限制、缓存与下载设置
+- 缓存机制
+  - 搜索缓存：基于MD5哈希的查询缓存，支持TTL过期
+  - 分析缓存：基于内容哈希的分析结果缓存，7天有效期
+- 速率限制
+  - 令牌桶算法：为每个数据源配置独立的容量和补充率
 
-章节来源
+**章节来源**
 - [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L21-L111)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L13-L61)
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L21-L88)
 - [.qoder/skills/web_scraping_skill.py](file://.qoder/skills/web_scraping_skill.py#L27-L127)
 - [backend/config.py](file://backend/config.py#L15-L78)
 - [.qoder/config.json](file://.qoder/config.json#L1-L31)
+- [backend/services/cache_service.py](file://backend/services/cache_service.py#L1-L104)
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py#L1-L75)
 
 ## 架构总览
-AI代理系统围绕“配置驱动 + 代理抽象 + 技能模块”的三层设计展开：
+AI代理系统围绕"配置驱动 + 代理抽象 + 技能模块 + 缓存机制"的四层设计展开：
 - 配置层：集中管理提供商、模型、速率限制、缓存与下载策略
 - 代理层：搜索代理与分析代理分别承担数据获取与AI推理职责
 - 技能层：可插拔的通用能力（PDF下载、网页抓取）
+- 缓存层：多级缓存策略，减少重复请求与API开销
 
 ```mermaid
 graph TB
@@ -129,20 +161,32 @@ subgraph "技能层"
 PDF["PDF下载技能<br/>pdf_download_skill"]
 WEB["网页抓取技能<br/>web_scraping_skill"]
 end
+subgraph "缓存层"
+SC["搜索缓存<br/>cache_service"]
+AC["分析缓存<br/>cache_service"]
+end
+subgraph "限流层"
+RL["速率限制器<br/>rate_limiter"]
+end
 SA --> WEB
+SA --> RL
 AA --> CFG
 SA --> CFG
 PDF --> CFG
 WEB --> CFG
+SA --> SC
+AA --> AC
 ```
 
-图表来源
+**图表来源**
 - [backend/config.py](file://backend/config.py#L15-L78)
 - [.qoder/config.json](file://.qoder/config.json#L1-L31)
 - [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L21-L32)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L13-L33)
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L12-L18)
 - [.qoder/skills/web_scraping_skill.py](file://.qoder/skills/web_scraping_skill.py#L9-L15)
+- [backend/services/cache_service.py](file://backend/services/cache_service.py#L1-L104)
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py#L1-L75)
 
 ## 详细组件分析
 
@@ -151,6 +195,7 @@ WEB --> CFG
   - 工厂式动态调度：根据传入的数据源列表，映射到对应搜索方法，避免硬编码耦合
   - 并发与容错：线程池并发执行，统一超时与异常处理，未完成任务标记为超时
   - 结果去重：按URL去重，保证全局唯一
+  - 时间过滤：支持按周/月/年/3年的时间范围过滤
 - 关键流程
   - 输入：查询词、数据源集合、过滤条件
   - 执行：为每个有效数据源提交任务，收集结果
@@ -181,12 +226,12 @@ Svc-->>Route : 返回响应
 Route-->>Client : JSON结果
 ```
 
-图表来源
+**图表来源**
 - [backend/routes/search.py](file://backend/routes/search.py#L10-L27)
 - [backend/services/search_service.py](file://backend/services/search_service.py#L28-L67)
 - [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L33-L111)
 
-章节来源
+**章节来源**
 - [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L21-L111)
 
 ### 分析代理（AnalysisAgent）
@@ -218,12 +263,12 @@ Svc-->>Route : 返回响应
 Route-->>Client : JSON结果
 ```
 
-图表来源
+**图表来源**
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L24)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L25-L43)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L68-L114)
 
-章节来源
+**章节来源**
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L13-L61)
 
 ### 技能模块（PDF下载与网页抓取）
@@ -250,12 +295,68 @@ Validate --> |无效| Remove["删除无效文件"] --> MirrorLoop
 UpdateOK --> End(["结束"])
 ```
 
-图表来源
+**图表来源**
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L21-L88)
 
-章节来源
+**章节来源**
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L1-L146)
 - [.qoder/skills/web_scraping_skill.py](file://.qoder/skills/web_scraping_skill.py#L1-L128)
+
+### 缓存机制
+- 搜索缓存
+  - 键生成：对查询参数进行JSON序列化后MD5哈希
+  - 过期策略：支持小时级TTL配置，默认24小时
+  - 存储：SQLite数据库，自动清理过期条目
+- 分析缓存
+  - 键生成：对内容前2000字符进行哈希，附加分析类型
+  - 过期策略：7天固定有效期
+  - 存储：SQLite数据库，定期清理过期条目
+
+```mermaid
+flowchart TD
+A["请求到达"] --> B["生成缓存键"]
+B --> C{"缓存命中?"}
+C --> |是| D["返回缓存结果"]
+C --> |否| E["执行实际操作"]
+E --> F["存储到缓存"]
+F --> G["返回结果"]
+D --> H["记录日志"]
+G --> H
+```
+
+**图表来源**
+- [backend/services/cache_service.py](file://backend/services/cache_service.py#L16-L87)
+
+**章节来源**
+- [backend/services/cache_service.py](file://backend/services/cache_service.py#L1-L104)
+
+### 速率限制策略
+- 令牌桶算法
+  - 每个数据源独立配置容量和补充率
+  - 线程安全的令牌获取机制
+  - 支持超时控制，避免阻塞
+- 配置管理
+  - 默认配置：arXiv(5/0.33)、Zhihu(3/0.2)、Scholar(10/1.0)、DuckDuckGo(20/2.0)
+  - 可通过.qoder/config.json覆盖默认配置
+
+```mermaid
+flowchart TD
+Start(["请求到来"]) --> Check["检查令牌桶"]
+Check --> |有令牌| Use["使用令牌"]
+Check --> |无令牌| Wait["等待补充"]
+Wait --> Sleep["休眠0.1秒"]
+Sleep --> Check
+Use --> Process["处理请求"]
+Process --> Refill["补充令牌"]
+Refill --> End(["完成"])
+```
+
+**图表来源**
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py#L5-L75)
+
+**章节来源**
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py#L1-L75)
+- [.qoder/config.json](file://.qoder/config.json#L2-L7)
 
 ### 配置驱动的代理管理
 - 配置来源
@@ -287,11 +388,11 @@ CFG --> DL
 CFG --> AN
 ```
 
-图表来源
+**图表来源**
 - [backend/config.py](file://backend/config.py#L15-L78)
 - [.qoder/config.json](file://.qoder/config.json#L1-L31)
 
-章节来源
+**章节来源**
 - [backend/config.py](file://backend/config.py#L15-L78)
 - [.qoder/config.json](file://.qoder/config.json#L1-L31)
 
@@ -305,7 +406,7 @@ CFG --> AN
   - 服务层缓存命中失败时降级到代理调用
   - 代理层对LLM调用异常进行捕获与返回，避免中断整体流程
 
-章节来源
+**章节来源**
 - [backend/routes/search.py](file://backend/routes/search.py#L22-L27)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L22-L24)
 - [backend/services/search_service.py](file://backend/services/search_service.py#L70-L79)
@@ -318,13 +419,15 @@ stateDiagram-v2
 初始化 --> 运行中 : "加载配置/代理实例"
 运行中 --> 搜索阶段 : "接收搜索请求"
 运行中 --> 分析阶段 : "接收分析请求"
+运行中 --> 下载阶段 : "接收下载请求"
 搜索阶段 --> 运行中 : "返回结果/记录历史"
 分析阶段 --> 运行中 : "返回结果/缓存"
+下载阶段 --> 运行中 : "返回状态/更新记录"
 运行中 --> 错误处理 : "异常捕获"
 错误处理 --> 运行中 : "记录日志/返回错误"
 ```
 
-图表来源
+**图表来源**
 - [backend/app.py](file://backend/app.py#L61-L65)
 - [backend/services/search_service.py](file://backend/services/search_service.py#L70-L79)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L32-L35)
@@ -343,7 +446,7 @@ G --> I["返回状态/记录"]
 H --> I
 ```
 
-图表来源
+**图表来源**
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L21-L88)
 - [.qoder/skills/web_scraping_skill.py](file://.qoder/skills/web_scraping_skill.py#L27-L127)
 
@@ -369,7 +472,7 @@ SINGLE --> CACHE
 SINGLE --> RATE
 ```
 
-图表来源
+**图表来源**
 - [backend/config.py](file://backend/config.py#L15-L78)
 - [.qoder/config.json](file://.qoder/config.json#L1-L31)
 
@@ -378,6 +481,7 @@ SINGLE --> RATE
   - 路由依赖服务层，服务层依赖代理层与配置层
   - 代理层依赖配置层与第三方SDK（requests、arxiv、zhipuai/openai）
   - 技能模块独立，通过简单函数暴露能力
+  - 缓存服务依赖数据库模型
 - 外部依赖
   - 数据源：Bing/semantic scholar/arXiv/Zhihu
   - LLM提供商：zhipuai、openai兼容接口（DeepSeek）
@@ -387,24 +491,31 @@ SINGLE --> RATE
 graph LR
 RT_SEARCH["搜索路由"] --> SVC_SEARCH["搜索服务"]
 RT_ANALYSIS["分析路由"] --> SVC_ANALYSIS["分析服务"]
+RT_DOWNLOAD["下载路由"] --> SK_PDF["PDF下载技能"]
+RT_HISTORY["历史路由"] --> DB["数据库模型"]
 SVC_SEARCH --> AG_SEARCH["搜索代理"]
 SVC_ANALYSIS --> AG_ANALYSIS["分析代理"]
 AG_SEARCH --> SK_WEB["网页抓取技能"]
 AG_ANALYSIS --> CFG["配置"]
-SVC_SEARCH --> DB["数据库模型"]
+SVC_SEARCH --> SVC_CACHE["缓存服务"]
+SVC_ANALYSIS --> SVC_CACHE
+SVC_SEARCH --> SVC_RATE["速率限制器"]
+SVC_SEARCH --> DB
 SVC_ANALYSIS --> DB
 ```
 
-图表来源
+**图表来源**
 - [backend/routes/search.py](file://backend/routes/search.py#L10-L27)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L65)
+- [backend/routes/download.py](file://backend/routes/download.py#L1-L200)
+- [backend/routes/history.py](file://backend/routes/history.py#L1-L200)
 - [backend/services/search_service.py](file://backend/services/search_service.py#L28-L67)
 - [backend/services/analysis_service.py](file://backend/services/analysis_service.py#L25-L90)
 - [.qoder/agents/search_agent.py](file://.qoder/agents/search_agent.py#L21-L32)
 - [.qoder/agents/analysis_agent.py](file://.qoder/agents/analysis_agent.py#L13-L33)
 - [backend/models/schemas.py](file://backend/models/schemas.py#L1-L37)
 
-章节来源
+**章节来源**
 - [backend/routes/search.py](file://backend/routes/search.py#L10-L27)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L10-L65)
 - [backend/services/search_service.py](file://backend/services/search_service.py#L28-L67)
@@ -416,8 +527,11 @@ SVC_ANALYSIS --> DB
   - 分析代理调用LLM存在额度与延迟，应合理设置温度与最大token
 - 缓存策略
   - 搜索与分析均提供缓存键生成与命中逻辑，减少重复请求与API开销
+  - 搜索缓存支持TTL配置，默认24小时，分析缓存固定7天
 - I/O优化
   - PDF下载采用流式写入与镜像回退，提升成功率与稳定性
+- 速率限制
+  - 令牌桶算法实现细粒度限流，可根据数据源特性调整配置
 - 前端与后端分离
   - 前端静态资源由后端统一托管，SPA回退逻辑保证路由健壮性
 
@@ -425,23 +539,35 @@ SVC_ANALYSIS --> DB
 - 搜索无结果或超时
   - 检查数据源可用性与网络代理配置
   - 查看路由层日志，确认异常被捕获并返回
+  - 验证速率限制配置是否过于严格
 - AI分析失败
   - 确认LLM提供商API密钥配置正确
   - 检查分析设置中的provider与model是否匹配
+  - 查看缓存是否导致旧结果返回
 - PDF下载失败
   - 观察镜像回退日志，确认文件大小与PDF头校验
   - 检查数据库记录状态与保存目录权限
+- 缓存问题
+  - 使用缓存清理功能移除过期条目
+  - 检查数据库连接与表结构
+- 速率限制问题
+  - 调整.qoder/config.json中的rate_limits配置
+  - 监控各数据源的请求频率
 
-章节来源
+**章节来源**
 - [backend/routes/search.py](file://backend/routes/search.py#L22-L27)
 - [backend/routes/analysis.py](file://backend/routes/analysis.py#L22-L24)
 - [.qoder/skills/pdf_download_skill.py](file://.qoder/skills/pdf_download_skill.py#L50-L88)
+- [backend/services/cache_service.py](file://backend/services/cache_service.py#L91-L104)
+- [backend/services/rate_limiter.py](file://backend/services/rate_limiter.py#L64-L75)
 
 ## 结论
-本AI代理系统通过“配置驱动 + 代理抽象 + 技能模块”的分层设计，实现了多数据源并发搜索与LLM能力的统一接入。其可扩展性体现在：
+本AI代理系统通过"配置驱动 + 代理抽象 + 技能模块 + 缓存机制"的分层设计，实现了多数据源并发搜索与LLM能力的统一接入。其可扩展性体现在：
 - 新增数据源：在搜索代理中添加映射与方法，即可纳入并发调度
 - 新增LLM提供商：在分析代理中扩展客户端初始化逻辑
 - 新增技能：以函数形式提供能力，按需注入到代理或服务中
+- 缓存优化：多级缓存策略显著减少API调用成本
+- 限流控制：细粒度的令牌桶算法确保系统稳定运行
 
 该架构在保证易用性的同时，兼顾了性能与可靠性，适合进一步演进为更复杂的多代理协作平台。
 
@@ -482,5 +608,12 @@ datetime timestamp
 }
 ```
 
-图表来源
+**图表来源**
 - [backend/models/schemas.py](file://backend/models/schemas.py#L1-L37)
+
+- 新增的下载与历史管理接口
+  - 下载接口：POST /api/download/arxiv、GET /api/download/status/<id>、GET /api/download/file/<id>、GET /api/download/history
+  - 历史接口：GET /api/history、DELETE /api/history
+
+**章节来源**
+- [README.md](file://README.md#L287-L301)
