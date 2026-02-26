@@ -8,9 +8,12 @@
 
 **核心功能：**
 - **多源聚合搜索**：同时从 arXiv、Bing、Semantic Scholar、知乎等多个数据源检索内容
+- **多关键词检索**：支持最多 5 个独立关键词同时搜索，结果自动合并去重
+- **AI 语义过滤**：使用大语言模型评估搜索结果与查询的语义相关性，过滤不相关内容
 - **智能内容分类**：自动识别搜索结果类型（学术论文、博客、问答、论坛、网页）
 - **AI 内容分析**：使用大语言模型生成摘要、提取关键点、翻译内容
 - **学术论文解析**：深度分析论文的研究方法、创新点、实验结果
+- **结果筛选导出**：支持选择、反选、删除搜索结果，并导出为 CSV 格式（含 AI 中文翻译）
 - **PDF 下载管理**：支持 arXiv 论文 PDF 下载，含国内镜像加速
 - **搜索历史记录**：保存搜索记录，支持快速回溯
 
@@ -186,12 +189,17 @@ python backend/app.py
 
 ### 1. 多源搜索
 
-在顶部搜索框输入关键词，勾选数据源后按回车搜索：
+在顶部搜索区域输入关键词，勾选数据源后点击搜索：
 
 - **DuckDuckGo**: 通用网页搜索（底层使用 Bing 搜索引擎）
 - **arXiv**: 学术预印本论文（直接调用 arXiv API）
 - **Google Scholar**: 学术文献（底层使用 Semantic Scholar API）
 - **知乎**: 中文问答内容（通过 Bing 站内搜索）
+
+**多关键词搜索**：
+- 默认显示 1 个输入框，点击「添加关键词」可增加（最多 5 个）
+- 每个关键词独立搜索，结果自动合并去重
+- 适用于需要同时检索多个相关主题的场景
 
 搜索结果会自动分类并显示来源标签。
 
@@ -242,10 +250,34 @@ python backend/app.py
 
 | 数据源 | 时间过滤支持 | 说明 |
 |--------|------------|------|
-| arXiv | 原生支持 | 通过 `submittedDate` 查询语法精确过滤 |
+| arXiv | 本地过滤 | 按发布日期排序后本地过滤，确保结果在指定时间范围内 |
 | Google Scholar | 原生支持 | 通过 Semantic Scholar API 的 `year` 参数过滤 |
 | DuckDuckGo | 不支持 | Bing 搜索结果缺少可靠的时间元数据，忽略时间参数 |
 | 知乎 | 不支持 | 基于 Bing 站内搜索，忽略时间参数 |
+
+### 7. AI 语义过滤
+
+在右侧筛选面板中配置 AI 语义过滤功能：
+
+- **启用/禁用开关**：默认启用，关闭后跳过语义评估（提高速度但可能包含不相关结果）
+- **相关性阈值滑块**：调节过滤严格程度（0-100）
+  - 0-39：宽松，保留大部分结果
+  - 40-60：适中（推荐），过滤明显不相关内容
+  - 60-80：严格，只保留高度相关结果
+  - 80-100：非常严格
+
+AI 会对每个搜索结果评估与查询的语义相关性，过滤掉低于阈值的结果。例如搜索"End-to-End Autonomous Driving"时，会自动过滤与自动驾驶无关的内容。
+
+### 8. 结果选择与导出
+
+搜索结果支持批量选择和导出：
+
+- **选择操作**：每个结果左侧有复选框，支持全选/取消全选/反选
+- **删除选中项**：从结果列表中移除不需要的条目
+- **导出选中结果**：将选中的结果导出为 CSV 文件
+  - 自动将英文摘要翻译为中文
+  - 包含：标题、内容摘要（中文）、原始链接
+  - 支持 Excel 直接打开（UTF-8 BOM 编码）
 
 ## API 接口说明
 
@@ -256,19 +288,36 @@ POST /api/search
 Content-Type: application/json
 
 {
-    "query": "搜索关键词",
+    "queries": ["关键词1", "关键词2"],
     "sources": ["duckduckgo", "arxiv", "scholar", "zhihu"],
     "filters": {
-        "time_range": "month"
+        "time_range": "month",
+        "semantic_filter": true,
+        "relevance_threshold": 40
     }
 }
 ```
 
-`filters.time_range` 可选值：`"week"` | `"month"` | `"year"` | `"3years"` | `null`（不限）。
+**参数说明：**
+- `queries`: 关键词数组，最多 5 个（也支持 `query` 单字符串，向后兼容）
+- `sources`: 数据源列表，可选值：`duckduckgo`, `arxiv`, `scholar`, `zhihu`
+- `filters.time_range`: 时间范围，可选值：`"week"` | `"month"` | `"year"` | `"3years"` | `null`
+- `filters.semantic_filter`: 是否启用 AI 语义过滤，默认 `true`
+- `filters.relevance_threshold`: 相关性阈值 (0-100)，默认 `40`
 
 ```
 Response: {
-    "results": [...],
+    "results": [
+        {
+            "title": "论文标题",
+            "url": "https://...",
+            "snippet": "内容摘要...",
+            "source": "arxiv",
+            "category": "academic",
+            "published": "2024-01-15T00:00:00",
+            "relevance_score": 85
+        }
+    ],
     "total": 15,
     "sources_status": {"arxiv": "success", "duckduckgo": "success"}
 }
@@ -278,10 +327,20 @@ Response: {
 
 ```
 POST /api/analysis/summarize    # 生成摘要
-POST /api/analysis/translate    # 翻译内容
-POST /api/analysis/paper        # 论文分析
+Request: {"content": "待分析内容"}
+Response: {"summary": "...", "key_points": ["要点1", "要点2"]}
 
-Request Body: {"content": "...", "target_lang": "zh"}
+POST /api/analysis/translate    # 翻译内容
+Request: {"content": "...", "target_lang": "zh"}
+Response: {"translated_text": "...", "source_lang": "en"}
+
+POST /api/analysis/paper        # 论文深度分析
+Request: {"title": "...", "abstract": "..."}
+Response: {"abstract_summary": "...", "method": "...", "innovation": "...", "results": "...", "conclusion": "..."}
+
+POST /api/translate             # 简化翻译接口（用于批量导出）
+Request: {"text": "...", "target_lang": "zh"}
+Response: {"translated": "...", "source_lang": "en"}
 ```
 
 ### 下载接口
@@ -305,10 +364,10 @@ DELETE /api/history             # 清空历史
 | 组件 | 路径 | 功能 |
 |------|------|------|
 | `App.jsx` | `src/App.jsx` | 主布局，整合所有组件 |
-| `SearchBar.jsx` | `src/components/` | 搜索输入框和数据源选择 |
-| `FilterPanel.jsx` | `src/components/` | 结果类型筛选面板 |
-| `ResultList.jsx` | `src/components/` | 搜索结果列表容器 |
-| `ResultItem.jsx` | `src/components/` | 单个结果卡片 |
+| `SearchBar.jsx` | `src/components/` | 多关键词输入框、数据源选择、时间范围选择 |
+| `FilterPanel.jsx` | `src/components/` | 内容分类筛选、AI 语义过滤配置 |
+| `ResultList.jsx` | `src/components/` | 搜索结果列表、批量操作工具栏（全选/反选/删除/导出） |
+| `ResultItem.jsx` | `src/components/` | 单个结果卡片（含复选框） |
 | `AnalysisPanel.jsx` | `src/components/` | AI 分析抽屉面板 |
 | `DownloadManager.jsx` | `src/components/` | 下载任务管理器 |
 | `HistoryPanel.jsx` | `src/components/` | 搜索历史抽屉 |
@@ -317,7 +376,7 @@ DELETE /api/history             # 清空历史
 
 | Hook | 功能 |
 |------|------|
-| `useSearch` | 搜索状态和操作管理 |
+| `useSearch` | 搜索状态管理、结果选择、语义过滤配置 |
 | `useAnalysis` | AI 分析状态管理 |
 | `useDownload` | 下载任务状态管理 |
 
@@ -346,7 +405,43 @@ DELETE /api/history             # 清空历史
         "max_results_per_source": 15,
         "timeout_seconds": 60,
         "cache_expire_hours": 24,
-        "default_sources": ["duckduckgo", "arxiv"]
+        "default_sources": ["scholar", "arxiv"],
+        "enable_semantic_filter": true,
+        "relevance_threshold": 40
+    }
+}
+```
+
+**语义过滤配置说明：**
+- `enable_semantic_filter`: 全局开关，设为 `false` 禁用 AI 语义过滤
+- `relevance_threshold`: 默认相关性阈值 (0-100)，低于此分数的结果被过滤
+
+### 分析服务配置
+
+```json
+{
+    "analysis_settings": {
+        "provider": "deepseek",
+        "zhipu_model": "glm-4-flash",
+        "deepseek_model": "deepseek-chat",
+        "max_content_length": 4000,
+        "temperature": 0.7,
+        "cache_expire_days": 7
+    }
+}
+```
+
+### 下载服务配置
+
+```json
+{
+    "download_settings": {
+        "save_directory": "data/downloads",
+        "max_concurrent_downloads": 3,
+        "arxiv_mirrors": [
+            "https://arxiv.org/pdf/",
+            "https://cn.arxiv.org/pdf/"
+        ]
     }
 }
 ```
