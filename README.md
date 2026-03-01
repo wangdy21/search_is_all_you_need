@@ -11,15 +11,18 @@
 - **多关键词检索**：支持最多 5 个独立关键词同时搜索，结果自动合并去重
 - **AI 语义过滤**：使用大语言模型评估搜索结果与查询的语义相关性，过滤不相关内容
 - **智能内容分类**：自动识别搜索结果类型（学术论文、博客、问答、论坛、网页）
-- **AI 内容分析**：使用大语言模型生成摘要、提取关键点、翻译内容
+- **AI 内容分析**：使用大语言模型生成摘要、提取关键点
+- **摘要自动翻译**：搜索结果中的英文摘要自动检测语言并翻译为中文显示
 - **学术论文解析**：深度分析论文的研究方法、创新点、实验结果
+- **论文全文深度分析**：下载 arXiv 论文 PDF 全文，提取文本后使用 LLM 进行深度分析，返回结构化 JSON 结果
 - **结果筛选导出**：支持选择、反选、删除搜索结果，并导出为 CSV 格式（含 AI 中文翻译）
-- **PDF 下载管理**：支持 arXiv 论文 PDF 下载，含国内镜像加速
+- **PDF 下载管理**：支持 arXiv 论文 PDF 下载，多镜像并行测速自动选择最优源，分块下载实时进度显示，下载完成自动触发文件保存
 - **搜索历史记录**：保存搜索记录，支持快速回溯
 
 **架构特点：**
 - 前后端分离，RESTful API 设计
 - 多数据源并发搜索，线程池异步执行
+- 多镜像并行测速，动态选择最佳下载源
 - 令牌桶算法速率限制，防止 API 滥用
 - 多级缓存策略，减少重复请求
 - 支持多 LLM 提供商（智谱 AI / DeepSeek）
@@ -30,11 +33,12 @@
 | 技术 | 版本 | 用途 |
 |------|------|------|
 | Python | 3.8+ | 运行环境 |
-| Flask | 3.0 | Web 框架 |
+| Flask | 2.2.5 | Web 框架 |
 | Flask-CORS | 4.0 | 跨域支持 |
-| SQLite | - | 数据存储（WAL 模式） |
+| SQLite | - | 数据存储（WAL 模式，含下载进度字段） |
 | zhipuai | 2.0+ | 智谱 AI SDK |
 | openai | 1.x | DeepSeek API（兼容接口） |
+| PyMuPDF | 1.24+ | PDF 文本提取 |
 | arxiv | 2.0+ | arXiv 论文检索 |
 | requests | 2.31+ | HTTP 请求（Bing / Semantic Scholar） |
 | BeautifulSoup4 | 4.12+ | HTML 解析（Bing 搜索结果解析） |
@@ -141,9 +145,6 @@ source venv/bin/activate
 
 # 安装依赖
 pip install -r backend/requirements.txt
-
-# DeepSeek 支持 (可选)
-pip install "openai>=1.0.0,<1.60.0"
 ```
 
 #### 前端安装
@@ -205,20 +206,23 @@ python backend/app.py
 
 ### 2. AI 内容分析
 
-点击搜索结果卡片上的「分析」按钮，可使用以下功能：
+点击搜索结果卡片上的「AI分析」按钮，可使用以下功能：
 
 - **智能摘要**: 生成内容摘要和关键要点
-- **内容翻译**: 将英文内容翻译为中文
 - **论文解析**: 深度分析学术论文（仅限学术类结果）
+- **论文全文深度分析**: 对 arXiv 论文，自动下载 PDF 全文并提取文本，使用 LLM 生成结构化深度分析（含研究方法、创新点、实验结果、结论等）
+
+搜索结果中的英文摘要会自动检测语言并翻译为中文显示，无需手动操作。
 
 ### 3. PDF 下载
 
 对于 arXiv 论文，点击「下载 PDF」按钮：
 
+- 多镜像并行测速，自动选择最快下载源
+- 分块下载，实时进度条显示
 - 支持后台下载，可继续浏览
-- 自动使用国内镜像加速
-- 下载进度实时显示
-- 完成后可直接打开文件
+- 下载完成后自动触发浏览器文件保存
+- 已下载的文件自动缓存，避免重复下载
 
 ### 4. 搜索历史
 
@@ -334,8 +338,12 @@ POST /api/analysis/translate    # 翻译内容
 Request: {"content": "...", "target_lang": "zh"}
 Response: {"translated_text": "...", "source_lang": "en"}
 
-POST /api/analysis/paper        # 论文深度分析
+POST /api/analysis/paper        # 论文深度分析（基于摘要）
 Request: {"title": "...", "abstract": "..."}
+Response: {"abstract_summary": "...", "method": "...", "innovation": "...", "results": "...", "conclusion": "..."}
+
+POST /api/analysis/paper-full   # 论文全文深度分析（基于PDF全文）
+Request: {"arxiv_id": "2401.12345", "title": "论文标题"}
 Response: {"abstract_summary": "...", "method": "...", "innovation": "...", "results": "...", "conclusion": "..."}
 
 POST /api/translate             # 简化翻译接口（用于批量导出）
@@ -347,9 +355,10 @@ Response: {"translated": "...", "source_lang": "en"}
 
 ```
 POST /api/download/arxiv        # 开始下载
-GET  /api/download/status/<id>  # 查询状态
+GET  /api/download/status/<id>  # 查询状态（含进度百分比）
 GET  /api/download/file/<id>    # 获取文件
 GET  /api/download/history      # 下载历史
+GET  /api/download/clear-mirror-cache  # 清除镜像测速缓存
 ```
 
 ### 历史接口
@@ -367,8 +376,8 @@ DELETE /api/history             # 清空历史
 | `SearchBar.jsx` | `src/components/` | 多关键词输入框、数据源选择、时间范围选择 |
 | `FilterPanel.jsx` | `src/components/` | 内容分类筛选、AI 语义过滤配置 |
 | `ResultList.jsx` | `src/components/` | 搜索结果列表、批量操作工具栏（全选/反选/删除/导出） |
-| `ResultItem.jsx` | `src/components/` | 单个结果卡片（含复选框） |
-| `AnalysisPanel.jsx` | `src/components/` | AI 分析抽屉面板 |
+| `ResultItem.jsx` | `src/components/` | 单个结果卡片（含复选框、摘要自动翻译） |
+| `AnalysisPanel.jsx` | `src/components/` | AI 分析抽屉面板（含全文深度分析） |
 | `DownloadManager.jsx` | `src/components/` | 下载任务管理器 |
 | `HistoryPanel.jsx` | `src/components/` | 搜索历史抽屉 |
 
@@ -377,8 +386,8 @@ DELETE /api/history             # 清空历史
 | Hook | 功能 |
 |------|------|
 | `useSearch` | 搜索状态管理、结果选择、语义过滤配置 |
-| `useAnalysis` | AI 分析状态管理 |
-| `useDownload` | 下载任务状态管理 |
+| `useAnalysis` | AI 分析状态管理（含全文深度分析） |
+| `useDownload` | 下载任务状态管理（含进度跟踪、自动触发保存） |
 
 ## 配置选项
 
@@ -490,10 +499,17 @@ HTTPS_PROXY=http://127.0.0.1:7890
 **Q: AI 分析功能不可用？**
 - 确认已配置有效的 API 密钥
 - 检查 `config.json` 中的 `provider` 设置
+- 确保已安装 `openai` 依赖（`pip install openai>=1.0.0`）
+
+**Q: 论文全文分析超时？**
+- 全文分析需要下载 PDF、提取文本、LLM 分析，整体耗时较长（可能超过 60 秒）
+- 前端已为全文分析设置 180 秒超时，请耐心等待
+- 如果 PDF 较大，LLM 处理时间会相应增加
 
 **Q: PDF 下载失败？**
-- arXiv 服务器可能临时不可用
-- 系统会自动尝试国内镜像
+- 系统会自动并行测试多个镜像，选择最快的源下载
+- arXiv 服务器可能临时不可用，可尝试清除镜像缓存后重试
+- 可通过 `/api/download/clear-mirror-cache` 接口手动刷新镜像测速结果
 
 ## 目录结构
 
