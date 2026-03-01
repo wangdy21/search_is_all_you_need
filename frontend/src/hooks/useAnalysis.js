@@ -23,24 +23,6 @@ export default function useAnalysis() {
     }
   }, [])
 
-  const translate = useCallback(async (content, targetLang = 'zh') => {
-    setLoading(true)
-    try {
-      const data = await api.post('/analysis/translate', {
-        content,
-        target_lang: targetLang,
-      })
-      setAnalysisResult((prev) => ({ ...prev, translation: data }))
-    } catch (err) {
-      setAnalysisResult((prev) => ({
-        ...prev,
-        translation: { error: err.message || 'Translation failed' },
-      }))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   const analyzePaper = useCallback(async (paperData) => {
     setLoading(true)
     try {
@@ -50,6 +32,24 @@ export default function useAnalysis() {
       setAnalysisResult((prev) => ({
         ...prev,
         paper: { error: err.message || 'Paper analysis failed' },
+      }))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const analyzeFullPaper = useCallback(async (arxivId, title) => {
+    setLoading(true)
+    try {
+      const data = await api.post('/analysis/paper-full', {
+        arxiv_id: arxivId,
+        title,
+      }, { timeout: 180000 })
+      setAnalysisResult((prev) => ({ ...prev, paper: data }))
+    } catch (err) {
+      setAnalysisResult((prev) => ({
+        ...prev,
+        paper: { error: err.message || 'Full paper analysis failed' },
       }))
     } finally {
       setLoading(false)
@@ -77,8 +77,8 @@ export default function useAnalysis() {
     activeTab,
     setActiveTab,
     summarize,
-    translate,
     analyzePaper,
+    analyzeFullPaper,
     openAnalysis,
     closeAnalysis,
   }

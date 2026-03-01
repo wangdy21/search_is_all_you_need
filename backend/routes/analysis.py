@@ -85,3 +85,22 @@ def analyze_paper():
     except Exception as e:
         logger.error(f"Paper analysis error: {e}", exc_info=True)
         return jsonify({"error": "Paper analysis failed", "detail": str(e)}), 500
+
+
+@analysis_bp.route("/api/analysis/paper-full", methods=["POST"])
+def analyze_paper_full():
+    """Deep analysis of full paper PDF content."""
+    data = request.get_json(silent=True) or {}
+
+    arxiv_id = (data.get("arxiv_id") or "").strip()
+    title = data.get("title", "untitled")
+
+    if not arxiv_id:
+        return jsonify({"error": "arxiv_id is required"}), 400
+
+    try:
+        result = analysis_service.analyze_paper_full(arxiv_id, title)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Full paper analysis error: {e}", exc_info=True)
+        return jsonify({"error": "Full paper analysis failed", "detail": str(e)}), 500

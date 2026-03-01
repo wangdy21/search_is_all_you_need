@@ -45,8 +45,8 @@ export default function App() {
     activeTab,
     setActiveTab,
     summarize,
-    translate,
     analyzePaper,
+    analyzeFullPaper,
     openAnalysis,
     closeAnalysis,
   } = useAnalysis()
@@ -152,8 +152,8 @@ export default function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onSummarize={summarize}
-        onTranslate={translate}
         onAnalyzePaper={analyzePaper}
+        onAnalyzeFullPaper={analyzeFullPaper}
       />
 
       <DownloadManager

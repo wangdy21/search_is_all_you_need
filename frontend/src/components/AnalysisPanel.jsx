@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react'
-import { Drawer, Tabs, Typography, Spin, Tag, Empty, Button, Space, Divider } from 'antd'
+import { Drawer, Tabs, Typography, Spin, Tag, Empty, Button, Space, Divider, Alert } from 'antd'
 import {
   FileTextOutlined,
-  TranslationOutlined,
   ExperimentOutlined,
 } from '@ant-design/icons'
 
@@ -17,8 +16,8 @@ export default function AnalysisPanel({
   activeTab,
   onTabChange,
   onSummarize,
-  onTranslate,
   onAnalyzePaper,
+  onAnalyzeFullPaper,
 }) {
   useEffect(() => {
     if (visible && selectedItem && !analysisResult?.summary) {
@@ -52,52 +51,51 @@ export default function AnalysisPanel({
     )
   }
 
-  const renderTranslation = () => {
-    const data = analysisResult?.translation
-    if (loading && !data) return <Spin tip="正在翻译..." />
-    if (!data) {
-      return (
-        <div style={{ textAlign: 'center', padding: 40 }}>
-          <Button
-            type="primary"
-            icon={<TranslationOutlined />}
-            onClick={() => onTranslate(selectedItem?.snippet || selectedItem?.title || '')}
-          >
-            翻译为中文
-          </Button>
-        </div>
-      )
-    }
-    if (data.error) return <Text type="danger">错误: {data.error}</Text>
-
-    return (
-      <div>
-        <Title level={5}>翻译结果</Title>
-        <Paragraph>{data.translated_text}</Paragraph>
-      </div>
-    )
-  }
-
   const renderPaperAnalysis = () => {
     const data = analysisResult?.paper
-    if (loading && !data) return <Spin tip="正在分析论文..." />
+    const isAcademic = selectedItem?.category === 'academic'
+    const isArxiv = selectedItem?.source === 'arxiv'
+    const arxivId = selectedItem?.extra?.arxiv_id
+
+    if (loading && !data) return <Spin tip="正在分析论文全文，请稍候..." />
     if (!data) {
-      const isAcademic = selectedItem?.category === 'academic'
       return (
         <div style={{ textAlign: 'center', padding: 40 }}>
-          <Button
-            type="primary"
-            icon={<ExperimentOutlined />}
-            disabled={!isAcademic}
-            onClick={() =>
-              onAnalyzePaper({
-                title: selectedItem?.title || '',
-                abstract: selectedItem?.snippet || '',
-              })
-            }
-          >
-            {isAcademic ? '深度分析论文' : '仅支持学术论文'}
-          </Button>
+          <Space direction="vertical" size="middle">
+            {isArxiv && arxivId && (
+              <>
+                <Button
+                  type="primary"
+                  icon={<ExperimentOutlined />}
+                  onClick={() => onAnalyzeFullPaper(arxivId, selectedItem?.title || '')}
+                >
+                  深度分析论文全文
+                </Button>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  将自动获取PDF全文并进行AI深度分析
+                </Text>
+              </>
+            )}
+            {isAcademic && !isArxiv && (
+              <Button
+                type="primary"
+                icon={<ExperimentOutlined />}
+                onClick={() =>
+                  onAnalyzePaper({
+                    title: selectedItem?.title || '',
+                    abstract: selectedItem?.snippet || '',
+                  })
+                }
+              >
+                分析论文摘要
+              </Button>
+            )}
+            {!isAcademic && (
+              <Button type="primary" icon={<ExperimentOutlined />} disabled>
+                仅支持学术论文
+              </Button>
+            )}
+          </Space>
         </div>
       )
     }
@@ -131,11 +129,6 @@ export default function AnalysisPanel({
       key: 'summary',
       label: <><FileTextOutlined /> 摘要</>,
       children: renderSummary(),
-    },
-    {
-      key: 'translation',
-      label: <><TranslationOutlined /> 翻译</>,
-      children: renderTranslation(),
     },
     {
       key: 'paper',

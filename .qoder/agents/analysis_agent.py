@@ -65,7 +65,7 @@ class AnalysisAgent:
             return content[:self.max_content_length] + "...(truncated)"
         return content
 
-    def _call_api(self, prompt):
+    def _call_api(self, prompt, max_tokens=1500):
         """Call LLM API and return text response."""
         if not self.client:
             return None, "API key not configured or client initialization failed"
@@ -75,7 +75,7 @@ class AnalysisAgent:
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
-                max_tokens=1500,
+                max_tokens=max_tokens,
             )
             text = response.choices[0].message.content
             return text, None
@@ -162,6 +162,57 @@ class AnalysisAgent:
         )
 
         text, error = self._call_api(prompt)
+        if error:
+            return {
+                "abstract_summary": "", "method": "", "innovation": "",
+                "results": "", "conclusion": "", "error": error,
+            }
+
+        try:
+            parsed = self._extract_json(text)
+            return {
+                "abstract_summary": parsed.get("abstract_summary", ""),
+                "method": parsed.get("method", ""),
+                "innovation": parsed.get("innovation", ""),
+                "results": parsed.get("results", ""),
+                "conclusion": parsed.get("conclusion", ""),
+                "error": None,
+            }
+        except Exception:
+            return {
+                "abstract_summary": text, "method": "", "innovation": "",
+                "results": "", "conclusion": "", "error": None,
+            }
+
+    def analyze_paper_full(self, title, full_text):
+        """
+        Deep analysis of an academic paper using its full PDF text.
+
+        Args:
+            title: Paper title.
+            full_text: Full text extracted from PDF.
+
+        Returns:
+            dict with detailed analysis sections and error field.
+        """
+        # Use a larger content limit for full paper analysis
+        max_len = 30000
+        if len(full_text) > max_len:
+            full_text = full_text[:max_len] + "\n...(truncated)"
+
+        prompt = (
+            "你是一位资深的学术论文审阅专家。请对以下论文全文进行深度分析，"
+            "以JSON格式返回详细的分析结果。每个字段都请详细展开（每个字段至少100字）：\n\n"
+            '{"abstract_summary": "论文核心内容概述（包括研究背景、问题和主要贡献）",\n'
+            ' "method": "详细的研究方法和技术路线（包括模型架构、算法设计、数据处理方法等）",\n'
+            ' "innovation": "主要创新点和贡献（与现有工作的区别和改进）",\n'
+            ' "results": "实验结果和性能分析（包括数据集、评估指标、对比实验结果等）",\n'
+            ' "conclusion": "结论、局限性和未来工作方向"}\n\n'
+            f"论文标题：{title}\n\n"
+            f"论文全文：\n{full_text}"
+        )
+
+        text, error = self._call_api(prompt, max_tokens=4000)
         if error:
             return {
                 "abstract_summary": "", "method": "", "innovation": "",

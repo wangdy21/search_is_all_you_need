@@ -308,3 +308,102 @@ def clear_mirror_cache():
         _best_mirror = None
         _mirror_selected_time = 0
     logger.info("Mirror cache cleared")
+
+
+def extract_pdf_text(pdf_path, max_chars=30000):
+    """
+    Extract text content from a PDF file using PyMuPDF.
+
+    Args:
+        pdf_path: Path to the PDF file.
+        max_chars: Maximum characters to extract.
+
+    Returns:
+        Extracted text string, or None on failure.
+    """
+    try:
+        import fitz  # PyMuPDF
+
+        if not os.path.exists(pdf_path):
+            logger.error(f"PDF file not found: {pdf_path}")
+            return None
+
+        doc = fitz.open(pdf_path)
+        text_parts = []
+        total_chars = 0
+
+        for page in doc:
+            page_text = page.get_text()
+            if total_chars + len(page_text) > max_chars:
+                remaining = max_chars - total_chars
+                if remaining > 0:
+                    text_parts.append(page_text[:remaining])
+                break
+            text_parts.append(page_text)
+            total_chars += len(page_text)
+
+        doc.close()
+
+        full_text = "\n".join(text_parts).strip()
+        if not full_text:
+            logger.warning(f"No text extracted from PDF: {pdf_path}")
+            return None
+
+        logger.info(f"Extracted {len(full_text)} chars from PDF: {pdf_path}")
+        return full_text
+    except Exception as e:
+        logger.error(f"PDF text extraction failed: {e}")
+        return None
+
+
+def get_or_download_pdf(arxiv_id, db_path, save_dir):
+    """
+    Get the local path of a PDF, downloading it if necessary.
+    Blocks until the download completes.
+
+    Args:
+        arxiv_id: arXiv paper ID.
+        db_path: Path to SQLite database.
+        save_dir: Directory to save downloaded PDFs.
+
+    Returns:
+        Local file path if available, or None.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{arxiv_id.replace('/', '_')}.pdf")
+
+    # Check if already downloaded and valid
+    if os.path.exists(save_path) and validate_pdf(save_path):
+        return save_path
+
+    # Download synchronously
+    logger.info(f"Downloading PDF for full analysis: {arxiv_id}")
+    best_mirror = _get_best_mirror()
+    mirrors_to_try = [best_mirror] + [m for m in ARXIV_MIRRORS if m != best_mirror]
+    session = _get_session()
+    temp_path = save_path + ".tmp"
+
+    for mirror in mirrors_to_try:
+        url = f"{mirror}{arxiv_id}.pdf"
+        try:
+            resp = session.get(url, stream=True, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+            resp.raise_for_status()
+            with open(temp_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
+                    if chunk:
+                        f.write(chunk)
+            if validate_pdf(temp_path):
+                os.replace(temp_path, save_path)
+                logger.info(f"PDF downloaded for analysis: {arxiv_id}")
+                return save_path
+            else:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+        except requests.RequestException as e:
+            logger.warning(f"Download failed from {url}: {e}")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            continue
+
+    logger.error(f"Failed to download PDF for analysis: {arxiv_id}")
+    return None

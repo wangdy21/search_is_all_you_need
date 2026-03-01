@@ -20,7 +20,7 @@ api.interceptors.response.use(
         message.warning(data?.error || '请求参数错误')
       }
     } else if (error.code === 'ECONNABORTED') {
-      message.error('请求超时，请重试')
+      message.error('请求超时，该操作可能需要较长时间，请重试')
     } else {
       message.error('网络连接失败')
     }

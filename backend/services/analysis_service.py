@@ -88,3 +88,54 @@ def analyze_paper(paper_data):
         cache_service.set_analysis_cache(cache_key, "paper_analysis", result)
 
     return result
+
+
+def analyze_paper_full(arxiv_id, title):
+    """
+    Deep analysis of a full paper by downloading and extracting its PDF.
+
+    Args:
+        arxiv_id: arXiv paper ID.
+        title: Paper title.
+
+    Returns:
+        {"abstract_summary": str, "method": str, "innovation": str,
+         "results": str, "conclusion": str, "error": str|None}
+    """
+    # Check cache first
+    cache_key = cache_service.make_analysis_cache_key(f"full:{arxiv_id}", "paper_full_analysis")
+    cached = cache_service.get_analysis_cache(cache_key, "paper_full_analysis")
+    if cached:
+        return cached
+
+    config = get_config()
+
+    # Download PDF if needed
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".qoder"))
+    from skills.pdf_download_skill import get_or_download_pdf, extract_pdf_text
+
+    pdf_path = get_or_download_pdf(arxiv_id, str(config.DATABASE_PATH), str(config.DOWNLOAD_DIR))
+    if not pdf_path:
+        return {
+            "abstract_summary": "", "method": "", "innovation": "",
+            "results": "", "conclusion": "",
+            "error": "Failed to download PDF",
+        }
+
+    # Extract text from PDF
+    full_text = extract_pdf_text(pdf_path)
+    if not full_text:
+        return {
+            "abstract_summary": "", "method": "", "innovation": "",
+            "results": "", "conclusion": "",
+            "error": "Failed to extract text from PDF",
+        }
+
+    # Analyze with LLM
+    agent = _get_agent()
+    result = agent.analyze_paper_full(title, full_text)
+
+    if not result.get("error"):
+        cache_service.set_analysis_cache(cache_key, "paper_full_analysis", result)
+
+    return result

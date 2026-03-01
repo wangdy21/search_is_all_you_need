@@ -1,8 +1,7 @@
-import React from 'react'
-import { Card, Tag, Button, Space, Typography, Tooltip, Checkbox, Badge } from 'antd'
+import React, { useState, useEffect } from 'react'
+import { Card, Tag, Button, Space, Typography, Tooltip, Checkbox, Badge, Spin } from 'antd'
 import {
   FileTextOutlined,
-  TranslationOutlined,
   DownloadOutlined,
   LinkOutlined,
   UserOutlined,
@@ -10,6 +9,7 @@ import {
   RobotOutlined,
   GlobalOutlined,
 } from '@ant-design/icons'
+import api from '../services/api'
 
 const { Text } = Typography
 
@@ -44,9 +44,42 @@ const SOURCE_LABELS = {
   zhihu: '知乎',
 }
 
+function isMostlyChinese(text) {
+  if (!text) return false
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g)
+  return chineseChars && chineseChars.length > text.length * 0.3
+}
+
 export default function ResultItem({ item, onAnalyze, onDownload, selected, onToggleSelect }) {
   const isArxiv = item.source === 'arxiv'
   const arxivId = item.extra?.arxiv_id
+
+  const [translatedSnippet, setTranslatedSnippet] = useState(null)
+  const [translating, setTranslating] = useState(false)
+
+  useEffect(() => {
+    const snippet = item.snippet || ''
+    if (!snippet || isMostlyChinese(snippet)) {
+      return
+    }
+
+    let cancelled = false
+    setTranslating(true)
+    api.post('/analysis/translate', { content: snippet, target_lang: 'zh' })
+      .then((data) => {
+        if (!cancelled && data.translated_text) {
+          setTranslatedSnippet(data.translated_text)
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTranslating(false)
+      })
+
+    return () => { cancelled = true }
+  }, [item._id])
+
+  const displaySnippet = translatedSnippet || item.snippet || '暂无摘要'
 
   return (
     <Card 
@@ -81,9 +114,10 @@ export default function ResultItem({ item, onAnalyze, onDownload, selected, onTo
             </Space>
           </div>
 
-          {/* 摘要区域 */}
+          {/* 摘要区域 - 显示中文翻译 */}
           <div className="result-snippet">
-            {item.snippet || '暂无摘要'}
+            {translating && <Spin size="small" style={{ marginRight: 8 }} />}
+            {displaySnippet}
           </div>
 
           {/* 元信息区域 */}
@@ -130,13 +164,6 @@ export default function ResultItem({ item, onAnalyze, onDownload, selected, onTo
                 onClick={() => onAnalyze(item)}
               >
                 AI分析
-              </Button>
-              <Button
-                size="small"
-                icon={<TranslationOutlined />}
-                onClick={() => onAnalyze(item)}
-              >
-                翻译
               </Button>
               {isArxiv && arxivId && (
                 <Button
