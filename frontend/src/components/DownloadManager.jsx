@@ -173,7 +173,7 @@ export default function DownloadManager({ downloads, visible, onToggle, onRemove
                       {/* 进度条 */}
                       {item.status === 'downloading' && (
                         <Progress
-                          percent={50}
+                          percent={item.progress || 0}
                           size="small"
                           status="active"
                           strokeColor={{

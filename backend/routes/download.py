@@ -28,12 +28,12 @@ def download_arxiv():
         from skills.pdf_download_skill import start_download
 
         config = get_config()
-        record_id = start_download(
+        record_id, status = start_download(
             arxiv_id, title,
             str(config.DATABASE_PATH),
             str(config.DOWNLOAD_DIR),
         )
-        return jsonify({"download_id": record_id, "status": "pending"}), 200
+        return jsonify({"download_id": record_id, "status": status}), 200
     except Exception as e:
         logger.error(f"Download start error: {e}", exc_info=True)
         return jsonify({"error": "Download failed to start", "detail": str(e)}), 500

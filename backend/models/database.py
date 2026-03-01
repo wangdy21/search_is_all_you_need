@@ -40,6 +40,17 @@ def init_db():
 
     conn = sqlite3.connect(str(config.DATABASE_PATH))
     conn.executescript(SCHEMA_SQL)
+    
+    # Migrate: add progress column if not exists
+    try:
+        cursor = conn.execute("PRAGMA table_info(download_records)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'progress' not in columns:
+            conn.execute("ALTER TABLE download_records ADD COLUMN progress INTEGER DEFAULT 0")
+            conn.commit()
+    except Exception:
+        pass
+    
     conn.close()
 
 

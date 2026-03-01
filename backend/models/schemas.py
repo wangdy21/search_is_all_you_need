@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS download_records (
     pdf_path TEXT,
     status TEXT DEFAULT 'pending',
     file_size INTEGER DEFAULT 0,
+    progress INTEGER DEFAULT 0,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 """

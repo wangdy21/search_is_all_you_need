@@ -60,9 +60,13 @@ export default function App() {
   } = useDownload()
 
   const handleDownload = async (arxivId, title) => {
-    const id = await startDownload(arxivId, title)
-    if (id) {
-      message.success('下载任务已创建')
+    const result = await startDownload(arxivId, title)
+    if (result) {
+      if (result.status === 'completed') {
+        message.success('文件已缓存，正在下载...')
+      } else {
+        message.success('下载任务已创建，完成后将自动保存')
+      }
     }
   }
 

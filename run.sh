@@ -8,8 +8,8 @@ echo "=== Search Is All You Need ==="
 
 # 1. Check/create Python venv
 if [ ! -d "venv" ]; then
-    echo "[1/4] Creating Python 3.8 virtual environment..."
-    /usr/bin/python3.8 -m venv venv
+    echo "[1/4] Creating Python virtual environment..."
+    python -m venv venv
 fi
 
 echo "[1/4] Activating virtual environment..."
