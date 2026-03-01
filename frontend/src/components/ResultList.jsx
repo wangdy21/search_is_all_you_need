@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
-import { List, Spin, Empty, Typography, Button, Space, Divider, message, Modal, Progress } from 'antd'
+import { List, Spin, Empty, Typography, Button, Space, Divider, message, Modal, Progress, Card, Badge } from 'antd'
 import {
   CheckSquareOutlined,
   BorderOutlined,
   SwapOutlined,
   DeleteOutlined,
   ExportOutlined,
+  SearchOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons'
 import ResultItem from './ResultItem'
 import api from '../services/api'
@@ -102,71 +104,108 @@ export default function ResultList({
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <Spin size="large" tip="正在搜索中..." />
-      </div>
+      <Card className="loading-card">
+        <div style={{ textAlign: 'center', padding: 60 }}>
+          <Spin size="large" tip="正在搜索中..." />
+        </div>
+      </Card>
     )
   }
 
   if (!results || results.length === 0) {
-    return <Empty description="暂无搜索结果" style={{ padding: 60 }} />
+    return (
+      <Card className="empty-card">
+        <Empty 
+          description="暂无搜索结果" 
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
+      </Card>
+    )
   }
 
   const selectedCount = selectedIds?.size || 0
 
   return (
-    <div>
-      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text type="secondary">
-          共找到 <Text strong>{total}</Text> 条结果
-          （当前显示 {results.length} 条）
-        </Text>
-        {sourcesStatus && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {Object.entries(sourcesStatus).map(([src, status]) => (
-              <span key={src} style={{ marginLeft: 8 }}>
-                {src}: {status === 'success' ? '✓' : '✗'}
-              </span>
-            ))}
-          </Text>
-        )}
-      </div>
+    <div className="result-list-container">
+      {/* 统计信息栏 */}
+      <Card className="stats-card" size="small">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <Space size="middle">
+            <Badge 
+              count={total} 
+              showZero 
+              color="#1890ff"
+              style={{ fontSize: 12 }}
+            >
+              <Text type="secondary">
+                <SearchOutlined style={{ marginRight: 4 }} />
+                搜索结果
+              </Text>
+            </Badge>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              显示 {results.length} 条
+            </Text>
+          </Space>
+          
+          {sourcesStatus && (
+            <Space size="small" wrap>
+              {Object.entries(sourcesStatus).map(([src, status]) => (
+                <Badge
+                  key={src}
+                  status={status === 'success' ? 'success' : status === 'timeout' ? 'warning' : 'error'}
+                  text={
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {src}
+                    </Text>
+                  }
+                />
+              ))}
+            </Space>
+          )}
+        </div>
+      </Card>
 
-      <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f5f5f5', borderRadius: 8 }}>
-        <Space split={<Divider type="vertical" />} wrap>
-          <Text type="secondary">
-            已选择 <Text strong type="primary">{selectedCount}</Text> 项
-          </Text>
-          <Button
-            size="small"
-            icon={<CheckSquareOutlined />}
-            onClick={onSelectAll}
-          >
-            全选
-          </Button>
-          <Button
-            size="small"
-            icon={<BorderOutlined />}
-            onClick={onDeselectAll}
-          >
-            取消全选
-          </Button>
-          <Button
-            size="small"
-            icon={<SwapOutlined />}
-            onClick={onInvertSelection}
-          >
-            反选
-          </Button>
-          <Button
-            size="small"
-            icon={<DeleteOutlined />}
-            danger
-            onClick={onRemoveSelected}
-            disabled={selectedCount === 0}
-          >
-            删除选中项
-          </Button>
+      {/* 操作工具栏 */}
+      <Card className="toolbar-card" size="small">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <Space size="small" wrap>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              <DatabaseOutlined style={{ marginRight: 4 }} />
+              已选择 <Text strong type="primary">{selectedCount}</Text> 项
+            </Text>
+            <Divider type="vertical" style={{ margin: '0 4px' }} />
+            <Button
+              size="small"
+              icon={<CheckSquareOutlined />}
+              onClick={onSelectAll}
+            >
+              全选
+            </Button>
+            <Button
+              size="small"
+              icon={<BorderOutlined />}
+              onClick={onDeselectAll}
+            >
+              取消
+            </Button>
+            <Button
+              size="small"
+              icon={<SwapOutlined />}
+              onClick={onInvertSelection}
+            >
+              反选
+            </Button>
+            <Button
+              size="small"
+              icon={<DeleteOutlined />}
+              danger
+              onClick={onRemoveSelected}
+              disabled={selectedCount === 0}
+            >
+              删除
+            </Button>
+          </Space>
+          
           <Button
             size="small"
             icon={<ExportOutlined />}
@@ -177,14 +216,19 @@ export default function ResultList({
           >
             导出选中结果
           </Button>
-        </Space>
+        </div>
+        
         {exporting && (
-          <div style={{ marginTop: 8 }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>正在翻译并导出...</Text>
-            <Progress percent={exportProgress} size="small" />
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                正在翻译并导出... {exportProgress}%
+              </Text>
+              <Progress percent={exportProgress} size="small" status="active" />
+            </Space>
           </div>
         )}
-      </div>
+      </Card>
 
       <List
         dataSource={results}

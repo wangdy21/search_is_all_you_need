@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Tag, Button, Space, Typography, Tooltip, Checkbox } from 'antd'
+import { Card, Tag, Button, Space, Typography, Tooltip, Checkbox, Badge } from 'antd'
 import {
   FileTextOutlined,
   TranslationOutlined,
@@ -7,16 +7,26 @@ import {
   LinkOutlined,
   UserOutlined,
   CalendarOutlined,
+  RobotOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 
 const { Text } = Typography
 
 const CATEGORY_COLORS = {
-  academic: 'blue',
-  qa: 'green',
-  blog: 'orange',
+  academic: 'processing',
+  qa: 'success',
+  blog: 'warning',
   forum: 'purple',
   webpage: 'default',
+}
+
+const CATEGORY_ICONS = {
+  academic: <FileTextOutlined />,
+  qa: <RobotOutlined />,
+  blog: <GlobalOutlined />,
+  forum: <RobotOutlined />,
+  webpage: <GlobalOutlined />,
 }
 
 const CATEGORY_LABELS = {
@@ -39,7 +49,11 @@ export default function ResultItem({ item, onAnalyze, onDownload, selected, onTo
   const arxivId = item.extra?.arxiv_id
 
   return (
-    <Card className="result-card" size="small">
+    <Card 
+      className="result-card" 
+      size="small"
+      styles={{ body: { padding: '16px' } }}
+    >
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ paddingTop: 4 }}>
           <Checkbox
@@ -47,68 +61,94 @@ export default function ResultItem({ item, onAnalyze, onDownload, selected, onTo
             onChange={() => onToggleSelect(item._id)}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* 标题区域 */}
           <div className="result-title">
-            <a href={item.url} target="_blank" rel="noopener noreferrer">
-              {item.title || '无标题'}
-            </a>
+            <Space>
+              <Tooltip title={CATEGORY_LABELS[item.category] || item.category}>
+                <span style={{ color: 'var(--ant-color-primary)' }}>
+                  {CATEGORY_ICONS[item.category] || <GlobalOutlined />}
+                </span>
+              </Tooltip>
+              <a 
+                href={item.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                title={item.title}
+              >
+                {item.title || '无标题'}
+              </a>
+            </Space>
           </div>
 
+          {/* 摘要区域 */}
           <div className="result-snippet">
             {item.snippet || '暂无摘要'}
           </div>
 
+          {/* 元信息区域 */}
           <div className="result-meta">
-            <Tag color={CATEGORY_COLORS[item.category] || 'default'}>
-              {CATEGORY_LABELS[item.category] || item.category}
+            <Badge 
+              color={CATEGORY_COLORS[item.category] || 'default'}
+              text={
+                <Tag color={CATEGORY_COLORS[item.category] || 'default'} style={{ margin: 0 }}>
+                  {CATEGORY_LABELS[item.category] || item.category}
+                </Tag>
+              }
+            />
+            <Tag color="processing" style={{ fontSize: 11 }}>
+              {SOURCE_LABELS[item.source] || item.source}
             </Tag>
-            <Tag>{SOURCE_LABELS[item.source] || item.source}</Tag>
             {item.authors && (
               <Tooltip title={item.authors}>
-                <Text type="secondary">
-                  <UserOutlined /> {item.authors.length > 30 ? item.authors.slice(0, 30) + '...' : item.authors}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  <UserOutlined style={{ marginRight: 4 }} />
+                  {item.authors.length > 25 ? item.authors.slice(0, 25) + '...' : item.authors}
                 </Text>
               </Tooltip>
             )}
             {item.published && (
-              <Text type="secondary">
-                <CalendarOutlined /> {item.published.split('T')[0]}
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                <CalendarOutlined style={{ marginRight: 4 }} />
+                {item.published.split('T')[0]}
               </Text>
             )}
             <Tooltip title={item.url}>
-              <Text type="secondary">
-                <LinkOutlined /> {new URL(item.url).hostname}
+              <Text type="secondary" style={{ fontSize: 12 }} className="hostname-text">
+                <LinkOutlined style={{ marginRight: 4 }} />
+                {new URL(item.url).hostname}
               </Text>
             </Tooltip>
           </div>
 
+          {/* 操作按钮区域 */}
           <div className="result-actions">
-            <Button
-              size="small"
-              icon={<FileTextOutlined />}
-              onClick={() => onAnalyze(item)}
-            >
-              AI分析
-            </Button>
-            <Button
-              size="small"
-              icon={<TranslationOutlined />}
-              onClick={() => {
-                onAnalyze(item)
-              }}
-            >
-              翻译
-            </Button>
-            {isArxiv && arxivId && (
+            <Space size="small" wrap>
               <Button
                 size="small"
-                type="primary"
-                icon={<DownloadOutlined />}
-                onClick={() => onDownload(arxivId, item.title)}
+                icon={<RobotOutlined />}
+                onClick={() => onAnalyze(item)}
               >
-                下载PDF
+                AI分析
               </Button>
-            )}
+              <Button
+                size="small"
+                icon={<TranslationOutlined />}
+                onClick={() => onAnalyze(item)}
+              >
+                翻译
+              </Button>
+              {isArxiv && arxivId && (
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<DownloadOutlined />}
+                  onClick={() => onDownload(arxivId, item.title)}
+                >
+                  下载PDF
+                </Button>
+              )}
+            </Space>
           </div>
         </div>
       </div>
