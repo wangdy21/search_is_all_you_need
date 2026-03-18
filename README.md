@@ -119,11 +119,29 @@ DOWNLOAD_DIR=data/downloads
 
 ## 安装部署
 
-### 方式一：一键启动（推荐）
+### 方式一：自动化环境安装（推荐）
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/search_is_all_you_need.git
+git clone https://github.com/wangdy21/search_is_all_you_need.git
+cd search_is_all_you_need
+
+# 自动化安装开发环境（包含虚拟环境、依赖安装、配置）
+bash setup_dev_env.sh
+
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入 API 密钥
+
+# 一键启动
+bash run.sh
+```
+
+### 方式二：一键启动（已有环境）
+
+```bash
+# 克隆项目
+git clone https://github.com/wangdy21/search_is_all_you_need.git
 cd search_is_all_you_need
 
 # 配置环境变量
@@ -134,7 +152,7 @@ cp .env.example .env
 bash run.sh
 ```
 
-### 方式二：手动安装
+### 方式三：手动安装
 
 #### 后端安装
 
@@ -521,7 +539,8 @@ search_is_all_you_need/
 │   ├── models/             # 数据库模型
 │   ├── routes/             # API 路由
 │   ├── services/           # 业务服务
-│   └── utils/              # 工具函数
+│   ├── utils/              # 工具函数
+│   └── requirements.txt    # Python依赖
 ├── frontend/
 │   ├── src/
 │   │   ├── components/     # React 组件
@@ -537,6 +556,7 @@ search_is_all_you_need/
 ├── data/                   # 数据目录 (git ignored)
 ├── .env.example            # 环境变量模板
 ├── .gitignore
+├── setup_dev_env.sh        # 自动化开发环境安装脚本
 ├── run.sh                  # 一键启动脚本
 └── README.md
 ```
