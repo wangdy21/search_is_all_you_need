@@ -139,3 +139,36 @@ def analyze_paper_full(arxiv_id, title):
         cache_service.set_analysis_cache(cache_key, "paper_full_analysis", result)
 
     return result
+
+
+def generate_search_report(queries, results):
+    """
+    Generate a comprehensive search report based on search results.
+
+    Args:
+        queries: List of search query strings.
+        results: List of search result dicts.
+
+    Returns:
+        {"executive_summary": str, "key_findings": [str], 
+         "topic_analysis": str, "research_gaps": str, 
+         "recommendations": str, "error": str|None}
+    """
+    # Create cache key from queries and result hashes
+    import hashlib
+    queries_str = "|".join(queries)
+    results_hash = hashlib.md5(str([(r.get("title", ""), r.get("url", "")) for r in results[:20]]).encode()).hexdigest()
+    cache_key = cache_service.make_analysis_cache_key(f"{queries_str}:{results_hash}", "search_report")
+    
+    cached = cache_service.get_analysis_cache(cache_key, "search_report")
+    if cached:
+        logger.info("Using cached search report")
+        return cached
+
+    agent = _get_agent()
+    result = agent.generate_search_report(queries, results)
+
+    if not result.get("error"):
+        cache_service.set_analysis_cache(cache_key, "search_report", result)
+
+    return result

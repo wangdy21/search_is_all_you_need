@@ -104,3 +104,41 @@ def analyze_paper_full():
     except Exception as e:
         logger.error(f"Full paper analysis error: {e}", exc_info=True)
         return jsonify({"error": "Full paper analysis failed", "detail": str(e)}), 500
+
+
+@analysis_bp.route("/api/analysis/search-report", methods=["POST"])
+def generate_search_report():
+    """
+    Generate comprehensive search report based on search results.
+    
+    Request JSON:
+    {
+        "queries": ["keyword1", "keyword2"],
+        "results": [
+            {
+                "title": "Result title",
+                "snippet": "Result snippet",
+                "source": "arxiv",
+                "category": "academic",
+                "url": "https://...",
+                ...
+            }
+        ]
+    }
+    """
+    data = request.get_json(silent=True) or {}
+
+    queries = data.get("queries", [])
+    results = data.get("results", [])
+
+    if not queries:
+        return jsonify({"error": "queries are required"}), 400
+    if not results:
+        return jsonify({"error": "results are required"}), 400
+
+    try:
+        result = analysis_service.generate_search_report(queries, results)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Search report generation error: {e}", exc_info=True)
+        return jsonify({"error": "Search report generation failed", "detail": str(e)}), 500
