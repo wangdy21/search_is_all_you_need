@@ -358,3 +358,96 @@ Return ONLY the JSON object, no explanation."""
         except Exception as e:
             logger.error(f"Relevance evaluation failed: {e}")
             return {}
+
+    def generate_search_report(self, queries, results):
+        """
+        Generate a comprehensive search report based on search results.
+
+        Args:
+            queries: List of search query strings.
+            results: List of search result dicts.
+
+        Returns:
+            dict with report sections and error field.
+        """
+        if not results:
+            return {
+                "executive_summary": "",
+                "key_findings": [],
+                "topic_analysis": "",
+                "research_gaps": "",
+                "recommendations": "",
+                "error": "No search results to analyze"
+            }
+
+        # Prepare results summary for prompt
+        results_summary = []
+        for idx, item in enumerate(results[:20], 1):  # Use top 20 results
+            title = item.get("title", "")[:150]
+            snippet = item.get("snippet", "")[:300]
+            source = item.get("source", "")
+            category = item.get("category", "")
+            results_summary.append(
+                f"[{idx}] {title}\n"
+                f"    Source: {source} | Category: {category}\n"
+                f"    Summary: {snippet}\n"
+            )
+
+        prompt = f"""你是一位专业的学术研究分析师。请基于以下搜索结果，生成一份全面的中文研究报告。
+
+搜索关键词：{', '.join(queries)}
+
+搜索结果（前{min(20, len(results))}条）：
+{chr(10).join(results_summary)}
+
+请以JSON格式返回报告，包含以下部分：
+{{
+    "executive_summary": "执行摘要（200-300字，概述整体搜索结果的核心发现和意义）",
+    "key_findings": [
+        "关键发现1（具体、有洞察力的发现）",
+        "关键发现2",
+        "关键发现3-5个"
+    ],
+    "topic_analysis": "主题分析（详细分析搜索结果涉及的主要研究主题、技术趋势、研究热点等，300-500字）",
+    "research_gaps": "研究空白（分析当前研究中存在的不足、未解决的问题、未来研究方向等，200-300字）",
+    "recommendations": "建议（针对进一步研究、实践应用等方面的建议，200-300字）"
+}}
+
+请确保：
+1. 所有内容用中文撰写
+2. 分析要有深度和洞察力，不要只是简单罗列
+3. 基于实际搜索结果进行分析，避免空泛
+4. 每个部分都要充实，达到建议的字数要求
+5. 返回纯JSON格式，不要包含Markdown代码块标记"""
+
+        text, error = self._call_api(prompt, max_tokens=3000)
+        if error:
+            return {
+                "executive_summary": "",
+                "key_findings": [],
+                "topic_analysis": "",
+                "research_gaps": "",
+                "recommendations": "",
+                "error": error,
+            }
+
+        try:
+            parsed = self._extract_json(text)
+            return {
+                "executive_summary": parsed.get("executive_summary", ""),
+                "key_findings": parsed.get("key_findings", []),
+                "topic_analysis": parsed.get("topic_analysis", ""),
+                "research_gaps": parsed.get("research_gaps", ""),
+                "recommendations": parsed.get("recommendations", ""),
+                "error": None,
+            }
+        except Exception as e:
+            logger.error(f"Failed to parse search report: {e}")
+            return {
+                "executive_summary": text,
+                "key_findings": [],
+                "topic_analysis": "",
+                "research_gaps": "",
+                "recommendations": "",
+                "error": None,
+            }

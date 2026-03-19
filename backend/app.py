@@ -19,18 +19,14 @@ logger = get_logger("app")
 
 
 def create_app():
-    """Create and configure Flask application."""
+    """Create and configure Flask application (API-only mode)."""
     config = get_config()
 
-    # Determine static folder
-    static_folder = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-    static_folder = os.path.abspath(static_folder)
-
-    app = Flask(__name__, static_folder=static_folder, static_url_path="")
+    app = Flask(__name__)
     app.config["SECRET_KEY"] = config.SECRET_KEY
 
-    # CORS: allow Vite dev server in development
-    CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+    # CORS: allow all origins for API
+    CORS(app)
 
     # Register API blueprints
     app.register_blueprint(search_bp)
@@ -38,25 +34,25 @@ def create_app():
     app.register_blueprint(download_bp)
     app.register_blueprint(history_bp)
 
-    # SPA static file serving (production)
+    # API root endpoint
     @app.route("/")
-    def serve_index():
-        if os.path.exists(os.path.join(static_folder, "index.html")):
-            return send_from_directory(static_folder, "index.html")
-        return jsonify({"message": "search_is_all_you_need API server running", "status": "ok"})
+    def index():
+        return jsonify({
+            "message": "search_is_all_you_need API server running",
+            "status": "ok",
+            "version": "1.0.0",
+            "api_endpoints": {
+                "search": "/api/search",
+                "analysis": "/api/analysis",
+                "download": "/api/download",
+                "history": "/api/history"
+            }
+        })
 
-    @app.route("/<path:path>")
-    def serve_static(path):
-        if path.startswith("api/"):
-            return jsonify({"error": "Not found"}), 404
-        file_path = os.path.join(static_folder, path)
-        if os.path.exists(file_path):
-            return send_from_directory(static_folder, path)
-        # SPA fallback
-        index_path = os.path.join(static_folder, "index.html")
-        if os.path.exists(index_path):
-            return send_from_directory(static_folder, "index.html")
-        return jsonify({"error": "Not found"}), 404
+    # Health check endpoint
+    @app.route("/health")
+    def health():
+        return jsonify({"status": "healthy"})
 
     # Global error handler
     @app.errorhandler(Exception)
